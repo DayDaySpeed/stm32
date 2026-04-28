@@ -1,0 +1,7 @@
+{
+  "clangd.arguments": [
+    "--background-index",
+    "--compile-commands-dir=${workspaceFolder}/build",
+    "--query-driver=/usr/bin/arm-none-eabi-*"
+  ]
+}
