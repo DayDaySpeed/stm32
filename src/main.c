@@ -12,12 +12,14 @@ int main(void)
   //自检,确保该GPIO可正常输出
   for(int i = 0; i < 3; ++i){
     GPIOC_ODR ^= PC13_ODR_BIT;
+    GPIOA_ODR ^= PA0_ODR_BIT;
     GPIOA_ODR ^= PA1_ODR_BIT;
     delay_ms(300);
 
     GPIOC_ODR ^= PC13_ODR_BIT;
+    GPIOA_ODR ^= PA0_ODR_BIT;
     GPIOA_ODR ^= PA1_ODR_BIT;
-    delay_ms(300);
+    delay_ms(300);    
   }
 
   while (1) {
@@ -26,7 +28,13 @@ int main(void)
     }
 
     if (key_scan_event(KEY_PB1) == 1U) {
-      output_toggle_aux();
+      output_toggle_pc13();
+      output_toggle_pa0();
+      output_toggle_pa1();
+    }
+
+    if (key_scan_event(KEY_PB10) == 1U) {
+      output_toggle_pa1();
     }
   }
 }

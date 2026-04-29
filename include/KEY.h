@@ -7,6 +7,7 @@ typedef enum
 {
   KEY_PB0 = 0,
   KEY_PB1 = 1,
+  KEY_PB10 = 2,
   KEY_COUNT
 } key_id_t;
 
