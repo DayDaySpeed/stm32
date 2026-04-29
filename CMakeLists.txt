@@ -36,6 +36,9 @@ set(COMMON_FLAGS
 # 生成可执行固件（ELF）
 add_executable(${PROJECT_NAME}.elf
   src/main.c
+  src/KEY.c
+  src/LED.c
+  src/SYS.c
   startup/startup_stm32f103c8tx.s
 )
 
