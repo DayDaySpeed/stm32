@@ -1,30 +1,22 @@
-#ifndef __GPIO_H
-#define __GPIO_H
+#ifndef STM32_INCLUDE_GPIO_H
+#define STM32_INCLUDE_GPIO_H
 
-#include <stdint.h>
+#include "bsp/stm32f103_regs.h"
 
-#define GPIOA_BASE      (0x40010800UL)
-#define GPIOB_BASE      (0x40010C00UL)
-#define GPIOC_BASE      (0x40011000UL)
-#define GPIOD_BASE      (0x40011400UL)
-#define GPIOE_BASE      (0x40011800UL)
-#define GPIOD_
-#define GPIOC_CRH       (*(volatile uint32_t *)(GPIOC_BASE + 0x04UL))    // GPIOC 端口配置寄存器高 8 位（管脚 8~15）
-#define GPIOC_ODR       (*(volatile uint32_t *)(GPIOC_BASE + 0x0CUL))    // GPIOC 输出数据寄存器
+/* GPIOA_CRH 里每个引脚占 4bit：CNF[1:0] + MODE[1:0] */
+#define GPIO_CRL_CRH_PIN_FIELD_MASK   (0xFU)
 
+/* PA9 = USART1_TX */
+#define GPIO_PA9_CRH_POS              (4U)
+#define GPIO_PA9_CRH_MASK             (GPIO_CRL_CRH_PIN_FIELD_MASK << GPIO_PA9_CRH_POS)
+#define GPIO_PA9_AF_PP_50M            (0xBU << GPIO_PA9_CRH_POS)  /* 复用推挽输出 50MHz */
 
-#define GPIO13_MODE_POS (20U)                        // CRH 中 PC13 对应字段起始位
-#define GPIO13_MODE_MSK (0xFU << GPIO13_MODE_POS)   //清掉 PC13 的那 4 位配置
-#define GPIO13_OUT_2M_PP (0x2U << GPIO13_MODE_POS)  //把 PC13 配成目标模式（这里是输出推挽 2MHz）
-#define GPIO13_ODR_BIT  (1U << 13)                 // GPIO 端口输出数据寄存器（Output Data Register）
+/* PA10 = USART1_RX */
+#define GPIO_PA10_CRH_POS             (8U)
+#define GPIO_PA10_CRH_MASK            (GPIO_CRL_CRH_PIN_FIELD_MASK << GPIO_PA10_CRH_POS)
+#define GPIO_PA10_INPUT_FLOATING      (0x4U << GPIO_PA10_CRH_POS) /* 浮空输入 */
 
+/* USART1 默认引脚所在寄存器（便于驱动层统一引用） */
+#define GPIO_USART1_PINS_CRH_REG      GPIOA_CRH
 
-
-
-
-
-
-
-
-
-#endif
+#endif /* STM32_INCLUDE_GPIO_H */

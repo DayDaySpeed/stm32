@@ -1,6 +1,9 @@
 # STM32F103C8T6 Baremetal (CMake)
 
-这是一个最小可用的 STM32F103C8T6 裸机寄存器工程，使用 CMake + arm-none-eabi 工具链，不依赖 Keil。
+这是一个最小可用的 STM32F103C8T6 裸机寄存器工程，使用 CMake + arm-none-eabi 工具链，不依赖 Keil。当前示例包含：
+
+- `SysTick` 1ms 节拍与阻塞延时
+- `USART1`（PA9/PA10）115200 回显
 
 ## 依赖
 
@@ -33,8 +36,24 @@ cmake --build build --target flash
 openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "program build/stm32f103_baremetal.elf verify reset exit"
 ```
 
-## 工程说明
+## 目录结构
 
-- `src/main.c`：纯寄存器方式点亮 Blue Pill 板载 LED（PC13，低电平点亮，代码里做翻转）。
+- `src/main.c`：程序入口与中断入口绑定。
+- `src/app/app.c`：应用层逻辑（初始化和主循环）。
+- `src/drivers/*.c`：外设驱动实现（`systick`、`usart1`）。
+- `include/bsp`：芯片寄存器定义与时钟常量。
+- `include/drivers`：驱动接口声明。
+- `include/app`：应用接口声明。
 - `startup/startup_stm32f103c8tx.s`：向量表 + 数据段拷贝 + BSS 清零。
 - `linker/STM32F103C8TX_FLASH.ld`：64KB Flash / 20KB RAM 链接脚本。
+- `docs/CODING_STYLE.md`：项目编码规范。
+
+## 串口验证（CH340）
+
+- 接线：`PA9 -> RXD`，`PA10 -> TXD`，`GND -> GND`
+- 参数：`115200 8N1`
+- 终端示例：
+
+```bash
+minicom -D /dev/ttyUSB0 -b 115200
+```

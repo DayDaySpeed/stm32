@@ -1,13 +1,9 @@
-#ifndef __RCC_H
-#define __RCC_H
+#ifndef STM32_INCLUDE_RCC_H
+#define STM32_INCLUDE_RCC_H
 
-#include <stdint.h>
+#include "bsp/stm32f103_regs.h"
 
-#define RCC_BASE        (0x40021000UL)
-#define RCC_APB2ENR     (*(volatile uint32_t *)(RCC_BASE + 0x18UL))      // APB2 外设时钟使能寄存器
+/* USART1 所需 APB2 时钟位：AFIO + GPIOA + USART1 */
+#define RCC_APB2_USART1_REQUIRED_BITS  (RCC_AFIOEN_BIT | RCC_IOPAEN_BIT | RCC_USART1EN_BIT)
 
-#define RCC_IOPCEN_BIT  (1U << 4)                    // IOPC 时钟使能位
-
-
-
-#endif
+#endif /* STM32_INCLUDE_RCC_H */

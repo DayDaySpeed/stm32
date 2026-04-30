@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
+# 裸机工程不应在编译器检测阶段链接可执行文件
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
 # 工程名与语言：C + 启动汇编
 project(stm32f103_baremetal C ASM)
 
@@ -36,10 +39,18 @@ set(COMMON_FLAGS
 # 生成可执行固件（ELF）
 add_executable(${PROJECT_NAME}.elf
   src/main.c
+  src/app/app.c
+  src/drivers/systick.c
+  src/drivers/usart1.c
   startup/startup_stm32f103c8tx.s
 )
 
-target_include_directories(${PROJECT_NAME}.elf PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME}.elf PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/include/app
+  ${CMAKE_SOURCE_DIR}/include/bsp
+  ${CMAKE_SOURCE_DIR}/include/drivers
+)
 
 # 目标专用编译选项
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
@@ -58,6 +69,10 @@ target_link_options(${PROJECT_NAME}.elf PRIVATE
 )
 
 # 每次生成 ELF 后，自动导出 HEX/BIN，并打印固件体积
+if(NOT CMAKE_SIZE)
+  find_program(CMAKE_SIZE arm-none-eabi-size)
+endif()
+
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
   COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${PROJECT_NAME}.elf> ${PROJECT_NAME}.hex
   COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}.elf> ${PROJECT_NAME}.bin
