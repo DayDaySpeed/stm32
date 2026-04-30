@@ -20,7 +20,7 @@ void app_run_forever(void)
 {
   while (1) {
     uint8_t ch = 0U;
-
+    
     if (usart1_try_read_byte(&ch) != 0U) {
       usart1_send_string("recv: ");
       usart1_send_byte(ch);
