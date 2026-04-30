@@ -33,6 +33,7 @@
 #define USART_CR1_RE_BIT    (1U << 2)   /* 接收使能 */
 #define USART_CR1_TE_BIT    (1U << 3)   /* 发送使能 */
 #define USART_CR1_UE_BIT    (1U << 13)  /* USART 总使能 */
+#define USART_CR1_OVER8_BIT (1U << 15)  /* 1=8倍过采样，0=16倍过采样 */
 
 /* SysTick */
 #define SYSTICK_BASE        (0xE000E010UL)
