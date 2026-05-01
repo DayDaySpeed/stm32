@@ -4,6 +4,12 @@
 #include "GPIO.h"
 #include "RCC.h"
 
+#define USART1_RX_BUF_SIZE 64U
+
+static volatile uint8_t g_usart1_rx_buf[USART1_RX_BUF_SIZE];
+static volatile uint8_t g_usart1_rx_head = 0U;
+static volatile uint8_t g_usart1_rx_tail = 0U;
+
 static uint8_t usart1_compute_brr(
     uint32_t pclk_hz,
     uint32_t baudrate,
@@ -48,6 +54,32 @@ static uint8_t usart1_compute_brr(
   return 1U;
 }
 
+void usart1_enable_rx_interrupt(void)
+{
+  /* 开启 USART1 RXNE 中断，并在 NVIC 中使能 USART1 中断通道 */
+  USART1_CR1 |= USART_CR1_RXNEIE_BIT;
+  NVIC_ISER1 |= NVIC_USART1_IRQ_BIT;
+}
+
+void usart1_irq_handler(void)
+{
+  uint8_t data = 0U;
+  uint8_t next = 0U;
+  //接受数据寄存器是否有数据
+  if ((USART1_SR & USART_SR_RXNE_BIT) == 0U) {
+    return;
+  }
+
+  data = (uint8_t)USART1_DR; /* 读 DR 清 RXNE */
+  next = (uint8_t)((g_usart1_rx_head + 1U) % USART1_RX_BUF_SIZE);
+  if (next == g_usart1_rx_tail) {
+    return; /* 缓冲区满时丢弃最新字节 */
+  }
+
+  g_usart1_rx_buf[g_usart1_rx_head] = data;
+  g_usart1_rx_head = next;
+}
+
 /**
 @brief 初始化USART1
 @param baudrate 波特率
@@ -61,9 +93,9 @@ uint8_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling)
   if (usart1_compute_brr(SYSCLK_HZ, baudrate, oversampling, &brr) == 0U) {
     return 0U;
   }
-
+  //开启USART时钟
   RCC_APB2ENR |= RCC_APB2_USART1_REQUIRED_BITS;
-
+  //配置PA9为推挽输出|50MHz，PA10为浮空输入
   GPIO_USART1_PINS_CRH_REG &= ~(GPIO_PA9_CRH_MASK | GPIO_PA10_CRH_MASK);
   GPIO_USART1_PINS_CRH_REG |= (GPIO_PA9_AF_PP_50M | GPIO_PA10_INPUT_FLOATING);
 
@@ -98,10 +130,11 @@ void usart1_send_string(const char *str)
 
 uint8_t usart1_try_read_byte(uint8_t *out)
 {
-  if ((USART1_SR & USART_SR_RXNE_BIT) == 0U) {
+  if ((out == 0) || (g_usart1_rx_head == g_usart1_rx_tail)) {
     return 0U;
   }
 
-  *out = (uint8_t)USART1_DR;
+  *out = g_usart1_rx_buf[g_usart1_rx_tail];
+  g_usart1_rx_tail = (uint8_t)((g_usart1_rx_tail + 1U) % USART1_RX_BUF_SIZE);
   return 1U;
 }

@@ -32,8 +32,16 @@
 #define USART_SR_TXE_BIT    (1U << 7)   /* 发送数据寄存器空（可写入下一个字节） */
 #define USART_CR1_RE_BIT    (1U << 2)   /* 接收使能 */
 #define USART_CR1_TE_BIT    (1U << 3)   /* 发送使能 */
+#define USART_CR1_RXNEIE_BIT (1U << 5)  /* RXNE 中断使能 */
 #define USART_CR1_UE_BIT    (1U << 13)  /* USART 总使能 */
 #define USART_CR1_OVER8_BIT (1U << 15)  /* 1=8倍过采样，0=16倍过采样 */
+
+/* NVIC */
+#define NVIC_BASE           (0xE000E100UL)
+#define NVIC_ISER0          (*(volatile uint32_t *)(NVIC_BASE + 0x00UL))
+#define NVIC_ISER1          (*(volatile uint32_t *)(NVIC_BASE + 0x04UL))
+#define NVIC_USART1_IRQ_BIT (1U << 5)   /* USART1 IRQn=37 -> ISER1 bit5 */
+
 
 /* SysTick */
 #define SYSTICK_BASE        (0xE000E010UL)

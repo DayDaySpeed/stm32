@@ -12,6 +12,7 @@ void app_init(void)
     while (1) {
     }
   }
+  usart1_enable_rx_interrupt();
   usart1_send_string("\r\nUSART1 ready (PA9/PA10,115200 8N1)\r\n");
   usart1_send_string("Type any key, STM32 will echo it.\r\n");
 }
