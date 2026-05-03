@@ -130,8 +130,9 @@ void usart1_send_string(const char *str)
 
 uint8_t usart1_try_read_byte(uint8_t *out)
 {
+  /* out 为空指针；head==tail 表示环形缓冲无未读数据 */
   if ((out == 0) || (g_usart1_rx_head == g_usart1_rx_tail)) {
-    return 0U;
+    return 0U; /* 无数据可读 */
   }
 
   *out = g_usart1_rx_buf[g_usart1_rx_tail];
