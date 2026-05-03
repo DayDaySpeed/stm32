@@ -1,4 +1,5 @@
 #include "app/app.h"
+#include "bsp/board_init.h"
 #include "drivers/systick.h"
 #include "drivers/usart1.h"
 
@@ -14,6 +15,7 @@ void USART1_IRQHandler(void)
 
 int main(void)
 {
+  bsp_board_init();
   app_init();
   app_run_forever();
 }

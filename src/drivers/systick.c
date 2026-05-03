@@ -1,6 +1,6 @@
 #include "drivers/systick.h"
 
-#include "SYS.h"
+#include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
 
 static volatile uint32_t g_ms_ticks = 0;
@@ -12,7 +12,7 @@ void systick_on_interrupt(void)
 
 void systick_init_1ms(void)
 {
-  SYST_RVR = SYS_SYSTICK_RELOAD_1MS;
+  SYST_RVR = BSP_SYSTICK_RELOAD_1MS;
   SYST_CVR = 0UL;
   SYST_CSR = SYSTICK_CLKSRC_BIT | SYSTICK_TICKINT_BIT | SYSTICK_ENABLE_BIT;
 }

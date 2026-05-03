@@ -1,8 +1,7 @@
 #include "drivers/usart1.h"
 
+#include "bsp/board_pins.h"
 #include "bsp/clock.h"
-#include "GPIO.h"
-#include "RCC.h"
 
 #define USART1_RX_BUF_SIZE 64U
 
@@ -65,7 +64,7 @@ void usart1_irq_handler(void)
 {
   uint8_t data = 0U;
   uint8_t next = 0U;
-  //接受数据寄存器是否有数据
+  /* 接收数据寄存器非空才读 */
   if ((USART1_SR & USART_SR_RXNE_BIT) == 0U) {
     return;
   }
@@ -93,11 +92,10 @@ uint8_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling)
   if (usart1_compute_brr(SYSCLK_HZ, baudrate, oversampling, &brr) == 0U) {
     return 0U;
   }
-  //开启USART时钟
-  RCC_APB2ENR |= RCC_APB2_USART1_REQUIRED_BITS;
-  //配置PA9为推挽输出|50MHz，PA10为浮空输入
-  GPIO_USART1_PINS_CRH_REG &= ~(GPIO_PA9_CRH_MASK | GPIO_PA10_CRH_MASK);
-  GPIO_USART1_PINS_CRH_REG |= (GPIO_PA9_AF_PP_50M | GPIO_PA10_INPUT_FLOATING);
+  /* APB2 时钟已由 bsp_board_init() 使能；此处只配引脚与 USART 寄存器 */
+  BOARD_USART1_GPIO_CRH_REG &= ~(BOARD_GPIO_PA9_CRH_MASK | BOARD_GPIO_PA10_CRH_MASK);
+  BOARD_USART1_GPIO_CRH_REG |=
+      (BOARD_GPIO_PA9_AF_PP_50MHZ | BOARD_GPIO_PA10_INPUT_FLOATING);
 
   USART1_BRR = (uint32_t)brr;
 

@@ -9,12 +9,20 @@
 
 #define RCC_AFIOEN_BIT      (1U << 0)
 #define RCC_IOPAEN_BIT      (1U << 2)
+#define RCC_IOPBEN_BIT      (1U << 3)
 #define RCC_IOPCEN_BIT      (1U << 4)
 #define RCC_USART1EN_BIT    (1U << 14)
 
 /* GPIOA */
 #define GPIOA_BASE          (0x40010800UL)
 #define GPIOA_CRH           (*(volatile uint32_t *)(GPIOA_BASE + 0x04UL))
+
+/* GPIOB */
+#define GPIOB_BASE          (0x40010C00UL)
+#define GPIOB_CRH           (*(volatile uint32_t *)(GPIOB_BASE + 0x04UL))
+#define GPIOB_IDR           (*(volatile uint32_t *)(GPIOB_BASE + 0x08UL))
+#define GPIOB_ODR           (*(volatile uint32_t *)(GPIOB_BASE + 0x0CUL))
+#define GPIOB_BSRR          (*(volatile uint32_t *)(GPIOB_BASE + 0x10UL))
 
 /* GPIOC */
 #define GPIOC_BASE          (0x40011000UL)

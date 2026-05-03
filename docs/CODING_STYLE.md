@@ -8,11 +8,12 @@
 ## 目录分层
 
 - `src/app`：应用层逻辑（状态机、业务流程、任务调度）。
-- `src/drivers`：外设驱动层（USART、GPIO、SysTick 等）。
-- `include/bsp`：芯片寄存器定义与时钟常量。
+- `src/bsp`：板级初始化（时钟门控、与具体 PCB 相关的默认配置）。
+- `src/drivers`：外设驱动层（USART、SysTick、SSD1306 等）。
+- `include/bsp`：芯片寄存器、板级引脚宏、RCC 组合掩码、`board_init` 声明。
 - `include/drivers`：驱动公开接口（`.h`）。
 - `include/app`：应用层公开接口（`.h`）。
-- `include/GPIO.h`、`include/RCC.h`、`include/SYS.h`：对外稳定兼容入口。
+- `cmake/stm32_sources.cmake`：固件 `.c/.s` 源文件清单，增删模块时集中维护。
 
 ## 命名规则
 
@@ -27,8 +28,8 @@
 - 缩进使用 2 个空格。
 - 一个函数只做一件事，优先保持短小。
 - 注释写“为什么”，避免解释显而易见的“做什么”。
-- 裸寄存器读写集中在驱动层，应用层不直接操作寄存器。
-- 驱动优先包含稳定入口头（`GPIO.h/RCC.h/SYS.h`），避免直接依赖底层路径。
+- 裸寄存器读写集中在驱动层与 `bsp`，应用层不直接操作寄存器。
+- 驱动依赖的板级时钟门控由 `bsp_board_init()` 完成；驱动头文件中注明前置条件。
 
 ## 提交流程建议
 

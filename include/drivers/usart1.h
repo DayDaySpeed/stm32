@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+/* 须先调用 bsp_board_init()，否则 GPIOA/USART1 时钟未开。 */
+
 typedef enum {
   USART_OVERSAMPLING_16 = 0,
   USART_OVERSAMPLING_8 = 1

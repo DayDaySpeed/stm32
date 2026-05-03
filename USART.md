@@ -491,7 +491,7 @@ void usart_send_buf(USART_TypeDef *u, const uint8_t *buf, size_t n)
 
 先说明本表使用的工程前提（来自当前代码）：
 
-- `SYSCLK_HZ = 8000000`（见 `include/SYS.h`）
+- `SYSCLK_HZ = 8000000`（见 `include/bsp/clock.h`）
 - 当前未看到 RCC 分频重配置代码，可按默认近似：
   - `PCLK1 = 8MHz`
   - `PCLK2 = 8MHz`

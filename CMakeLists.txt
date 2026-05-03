@@ -36,14 +36,10 @@ set(COMMON_FLAGS
   -Wpedantic
 )
 
-# 生成可执行固件（ELF）
-add_executable(${PROJECT_NAME}.elf
-  src/main.c
-  src/app/app.c
-  src/drivers/systick.c
-  src/drivers/usart1.c
-  startup/startup_stm32f103c8tx.s
-)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/stm32_sources.cmake)
+
+# 生成可执行固件（ELF）；源文件列表见 cmake/stm32_sources.cmake
+add_executable(${PROJECT_NAME}.elf ${STM32_ELF_SOURCES})
 
 target_include_directories(${PROJECT_NAME}.elf PRIVATE
   ${CMAKE_SOURCE_DIR}/include
