@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-/* SSD1306 128×64，软件 I2C：PB8=SCL、PB9=SDA（开漏 + 模块上拉）。
+/* SSD1306 128×64，硬件 I2C1（AFIO 重映射 PB8=SCL、PB9=SDA，开漏 + 模块上拉）。
  * 须先调用 bsp_board_init()。
  * 默认 7 位地址 0x3C（写地址字节 0x78）；丝印 0x7A 的模块为 0x3D，改 ssd1306_oled.c 中 OLED_I2C_ADDR7。 */
 

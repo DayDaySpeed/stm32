@@ -2,8 +2,8 @@
  * SSD1306 OLED 驱动（128×64，I2C）
  * ---------------------------------------------------------------------------
  * 在干什么：
- *   用 PB8/PB9 两个 GPIO「软件模拟」I2C，给 SSD1306 发命令和显存数据；屏幕内容
- *   先写在单片机里的数组 g_fb（帧缓冲），再一次性 I2C 写到屏的 GDDRAM。
+ *   用片上 I2C1 硬件主机（AFIO 重映射：PB8=SCL、PB9=SDA）访问 SSD1306；屏幕内容
+ *   先写在单片机里的数组 g_fb（帧缓冲），再通过 I2C 写到屏的 GDDRAM。
  *
  * 显存与 g_fb 的对应（水平寻址模式 0x20 0x00）：
  *   - 屏宽 128 像素；纵向每 8 个像素为一「页(page)」，共 8 页 → 64 像素高。
@@ -15,12 +15,13 @@
  *   g_row_page：当前字符画在第几「页」上（0～7，一页高度 8 像素，刚好容纳 5×7 字模）。
  *
  * 对外流程简述：
- *   ssd1306_oled_init()     → 配 PB8/9 GPIO、发初始化命令、清屏并 refresh（须先 bsp_board_init）。
+ *   ssd1306_oled_init()     → 配 I2C1 重映射与 GPIO、发初始化命令、清屏并 refresh（须先 bsp_board_init）。
  *   ssd1306_oled_putc()     → 写 g_fb，并尽量只 I2C 更新 6 列×当前页（滚屏后则全屏 refresh）。
  *   ssd1306_oled_refresh()  → 全屏同步 g_fb → GDDRAM（清屏等可显式调用）。
  */
 #include "drivers/ssd1306_oled.h"
 
+#include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
 
 #include <stddef.h>
@@ -28,20 +29,17 @@
 
 /* SSD1306 的 7 位 I2C 地址（手册/丝印常见 0x3C；另一接法为 0x3D） */
 #define OLED_I2C_ADDR7      (0x3CU)
-/* 8 位写地址 = 7 位地址左移 |0（写）；即 0x3C → 总线上发 0x78 */
-#define OLED_I2C_ADDR8_W   ((uint8_t)(OLED_I2C_ADDR7 << 1))
-
 #define SSD1306_WIDTH       (128U)  /* 横向像素数 */
 #define SSD1306_PAGE_COUNT  (8U)    /* 纵向 64/8 = 8 页 */
 #define FB_SIZE             (SSD1306_WIDTH * SSD1306_PAGE_COUNT) /* 128*8=1024 字节 */
 
-#define PB_SCL_PIN          (8U)    /* 位带 I2C：SCL 接 PB8 */
-#define PB_SDA_PIN          (9U)    /* SDA 接 PB9；开漏输出，上拉在 OLED 小板 */
+/* I2C1：标准模式 100kHz；CR2.FREQ = PCLK1(MHz)。CCR = PCLK1 / (2*100kHz) */
+#define I2C1_SM_CCR         ((uint16_t)(BSP_PCLK1_HZ / 200000UL))
+#define I2C1_CR2_FREQ_MHZ  ((uint8_t)(BSP_PCLK1_HZ / 1000000UL))
+/* Sm 模式最大上升时间 1000ns：TRISE ≈ ceil(1µs / T_PCLK1)+1，简化为 MHz+1 */
+#define I2C1_TRISE_VAL      ((uint8_t)(I2C1_CR2_FREQ_MHZ + 1U))
 
-#define SCL_H()             (GPIOB_BSRR = (1U << PB_SCL_PIN))
-#define SCL_L()             (GPIOB_BSRR = (1U << (PB_SCL_PIN + 16U)))
-#define SDA_H()             (GPIOB_BSRR = (1U << PB_SDA_PIN))
-#define SDA_L()             (GPIOB_BSRR = (1U << (PB_SDA_PIN + 16U)))
+#define I2C1_TIMEOUT_ITER   (100000UL)
 
 extern const uint8_t oled_font5x7[]; /* 256 字符 × 5 字节/字，见 oled_font5x7.c */
 
@@ -51,127 +49,113 @@ static uint8_t g_fb[FB_SIZE];
 static unsigned g_col_px;
 static unsigned g_row_page;
 
-/* 位带 I2C 位时间：空循环拖慢 GPIO，避免超过从机/上拉允许的速率 */
-static void i2c_delay(void)
+static void i2c1_gpio_remap_init(void)
 {
-  for (volatile unsigned n = 0U; n < 50U; ++n) {
-    __asm volatile("" ::: "memory");
-  }
+  AFIO_MAPR |= AFIO_MAPR_I2C1_REMAP_BIT;
+  /* PB8/PB9：复用开漏(CNF/MODE:1111)（AF_OD），与 I2C1 重映射脚一致 */
+  GPIOB_CRH = (GPIOB_CRH & 0xFFFFFF00UL) | 0x000000FFUL;
 }
 
-/* I2C START：SCL 高时 SDA 由高变低 */
-static void i2c_start(void)
+static void i2c1_periph_init(void)
 {
-  SDA_H();
-  SCL_H();
-  i2c_delay();
-  SDA_L();
-  i2c_delay();
-  SCL_L();
-  i2c_delay();
-}
-
-/* I2C STOP：SCL 高时 SDA 由低变高 */
-static void i2c_stop(void)
-{
-  SDA_L();
-  i2c_delay();
-  SCL_H();
-  i2c_delay();
-  SDA_H();
-  i2c_delay();
+  I2C1_CR1 &= (uint32_t)~I2C_CR1_PE_BIT;
+  I2C1_CR2 = (uint32_t)I2C1_CR2_FREQ_MHZ & 0x3FUL;
+  I2C1_TRISE = (uint32_t)I2C1_TRISE_VAL & 0x3FUL;
+  I2C1_CCR = (uint32_t)I2C1_SM_CCR & 0xFFFUL;
+  I2C1_CR1 = I2C_CR1_PE_BIT;
 }
 
 /*
- * 主机写 1 字节：8 个数据位(MSB 先发) + 第 9 位 ACK。
- * I2C 规范：第 9 个 SCL 为高期间由从机驱动 SDA；SDA=0 为 ACK，=1 为 NACK，
- * 主机应在 SCL 高电平有效区间内采样 SDA。收到 NACK 时上层应发 STOP 并中止。
- * 返回值：1=收到 ACK，0=NACK 或总线异常（SDA 仍为高）。
+ * 等待 SR1 中某几位等于 expect；若出现 AF 则清标志并 STOP，返回 0。
  */
-static uint8_t i2c_write_byte(uint8_t b)
+static uint8_t i2c1_wait_sr1(uint32_t mask, uint32_t expect)
 {
-  /* 8 个数据位：SCL 低时建立 SDA，SCL 上升沿从机采样 SDA。 */
-  for (unsigned i = 0U; i < 8U; ++i) {
-    if ((b & 0x80U) != 0U) {
-      SDA_H();
-    } else {
-      SDA_L();
+  for (volatile uint32_t n = 0U; n < I2C1_TIMEOUT_ITER; ++n) {
+    const uint32_t sr1 = I2C1_SR1;
+    if ((sr1 & I2C_SR1_AF_BIT) != 0U) {
+      (void)I2C1_SR1;
+      (void)I2C1_SR2;
+      I2C1_SR1 &= (uint32_t)~I2C_SR1_AF_BIT;
+      I2C1_CR1 |= I2C_CR1_STOP_BIT;
+      return 0U;
     }
-    i2c_delay();
-    SCL_H();
-    i2c_delay();
-    SCL_L();
-    i2c_delay();
-    b = (uint8_t)(b << 1);
+    if ((sr1 & mask) == expect) {
+      return 1U;
+    }
   }
-  /* 第 9 位：主机释放 SDA，从机在 SCL 高期间拉低表示 ACK */
-  SDA_H();
-  i2c_delay();
-  SCL_H();
-  i2c_delay();
-  {
-    const uint32_t sda_high = GPIOB_IDR & (1U << PB_SDA_PIN);
-    const uint8_t ack = (sda_high == 0U) ? 1U : 0U;
-    SCL_L();
-    i2c_delay();
-    return ack;
+  I2C1_CR1 |= I2C_CR1_STOP_BIT;
+  return 0U;
+}
+
+/*
+ * 单帧写：START → 7 位地址写 → 控制字节 ctrl（0x00 命令流 / 0x40 显存流）→ payload → STOP。
+ */
+static uint8_t i2c1_write_ctrl_then_bytes(uint8_t addr7, uint8_t ctrl, const uint8_t *payload, size_t payload_len)
+{
+  for (volatile uint32_t n = 0U; n < I2C1_TIMEOUT_ITER; ++n) {
+    if ((I2C1_SR2 & I2C_SR2_BUSY_BIT) == 0U) {
+      break;
+    }
   }
+
+  I2C1_CR1 |= I2C_CR1_START_BIT;
+  if (i2c1_wait_sr1(I2C_SR1_SB_BIT, I2C_SR1_SB_BIT) == 0U) {
+    return 0U;
+  }
+
+  I2C1_DR = (uint32_t)(addr7 << 1);
+
+  if (i2c1_wait_sr1(I2C_SR1_ADDR_BIT, I2C_SR1_ADDR_BIT) == 0U) {
+    return 0U;
+  }
+
+  (void)I2C1_SR1;
+  (void)I2C1_SR2;
+
+  if (i2c1_wait_sr1(I2C_SR1_TXE_BIT, I2C_SR1_TXE_BIT) == 0U) {
+    return 0U;
+  }
+  I2C1_DR = (uint32_t)ctrl;
+
+  for (size_t i = 0U; i < payload_len; ++i) {
+    if (i2c1_wait_sr1(I2C_SR1_TXE_BIT, I2C_SR1_TXE_BIT) == 0U) {
+      return 0U;
+    }
+    I2C1_DR = (uint32_t)payload[i];
+  }
+
+  if (i2c1_wait_sr1(I2C_SR1_BTF_BIT, I2C_SR1_BTF_BIT) == 0U) {
+    return 0U;
+  }
+
+  I2C1_CR1 |= I2C_CR1_STOP_BIT;
+  for (volatile uint32_t d = 0U; d < 2000U; ++d) {
+    __asm volatile("" ::: "memory");
+  }
+  return 1U;
 }
 
 /*
  * 通过 I2C 向 SSD1306 发一串「显示控制器命令」(非显存数据)。
  * 帧格式：START → 7 位器件地址+写 → 控制字节 0x00(表示后续均为命令) → 各命令字节 → STOP。
- * 任一字节无 ACK 时发 STOP 并返回 0（符合主机收到 NACK 后结束总线）。
  */
 static uint8_t oled_send_commands(const uint8_t *cmds, size_t n)
 {
   if (n == 0U) {
     return 1U;
   }
-  i2c_start();
-  if (i2c_write_byte(OLED_I2C_ADDR8_W) == 0U) {
-    i2c_stop();
-    return 0U;
-  }
-  if (i2c_write_byte(0x00U) == 0U) {
-    i2c_stop();
-    return 0U;
-  }
-  for (size_t i = 0U; i < n; ++i) {
-    if (i2c_write_byte(cmds[i]) == 0U) {
-      i2c_stop();
-      return 0U;
-    }
-  }
-  i2c_stop();
-  return 1U;
+  return i2c1_write_ctrl_then_bytes((uint8_t)OLED_I2C_ADDR7, 0x00U, cmds, n);
 }
 
 /* 新开 I2C 写事务：地址 + 0x40 后连续写 len 字节到 GDDRAM */
 static uint8_t oled_push_gddram(const uint8_t *data, size_t len)
 {
-  i2c_start();
-  if (i2c_write_byte(OLED_I2C_ADDR8_W) == 0U) {
-    i2c_stop();
-    return 0U;
-  }
-  if (i2c_write_byte(0x40U) == 0U) {
-    i2c_stop();
-    return 0U;
-  }
-  for (size_t i = 0U; i < len; ++i) {
-    if (i2c_write_byte(data[i]) == 0U) {
-      i2c_stop();
-      return 0U;
-    }
-  }
-  i2c_stop();
-  return 1U;
+  return i2c1_write_ctrl_then_bytes((uint8_t)OLED_I2C_ADDR7, 0x40U, data, len);
 }
 
 /*
  * 只更新 g_fb 中一页里的一段连续列（水平寻址下与 GDDRAM 顺序一致）。
- * col0：起始列；page：页号 0～7；ncol：列数（通常 6，含字间距列）。
+ * col0：起始列；page：页号 0～7；ncol：列数（通常 6，含字间距列）。底层为硬件 I2C1。
  */
 static void ssd1306_oled_refresh_region(unsigned col0, unsigned page, unsigned ncol)
 {
@@ -223,12 +207,10 @@ static uint8_t ensure_row_visible(void)
 
 void ssd1306_oled_init(void)
 {
-  /* RCC：IOPB 由 bsp_board_init() 统一打开 */
+  /* RCC：IOPB / AFIO / I2C1 由 bsp_board_init() 统一打开 */
 
-  /* PB8/PB9：CNF=01 通用开漏，MODE=10 输出 2MHz；配合模块上拉作 I2C */
-  GPIOB_CRH = (GPIOB_CRH & 0xFFFFFF00UL) | 0x00000066UL;
-  /* 开漏空闲：输出寄存器置 1 释放总线，由上拉拉高 */
-  GPIOB_ODR |= (1U << PB_SCL_PIN) | (1U << PB_SDA_PIN);
+  i2c1_gpio_remap_init();
+  i2c1_periph_init();
 
   g_col_px = 0U;
   g_row_page = 0U;

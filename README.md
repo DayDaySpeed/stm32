@@ -21,7 +21,7 @@
 
 ### 1. 项目简介
 
-这是一个基于 `STM32F103C8T6` 的裸机寄存器工程，使用 `CMake + arm-none-eabi` 工具链。功能上包含 **`USART1` 串口**（中断接收 + 环形缓冲）与 **`SSD1306` 128×64 OLED**（`PB8/PB9` 软件 I2C）。
+这是一个基于 `STM32F103C8T6` 的裸机寄存器工程，使用 `CMake + arm-none-eabi` 工具链。功能上包含 **`USART1` 串口**（中断接收 + 环形缓冲）与 **`SSD1306` 128×64 OLED**（`I2C1` 硬件主机，`PB8/PB9` 为重映射脚）。
 
 ### 2. 本分支做了什么
 
@@ -58,8 +58,8 @@
   - 根目录 `GPIO.h`、`RCC.h`、`SYS.h` 迁入 `include/bsp/`（`board_pins.h`、`rcc_board.h`，SysTick 重装载并入 `clock.h`）。
   - `cmake/stm32_sources.cmake` 集中列出固件源，`CMakeLists.txt` 引用之。
 - **SSD1306 驱动**
-  - `ssd1306_oled.c` 补充模块级与关键流程中文注释；软件 I2C 写字节时 **采样并校验 ACK**，NACK 时发 STOP 中止。
-  - **刷新策略**：普通 `putc` 仅通过 **`0x21`/`0x22` 窗口** 推送 **6 列×当前页** 到 GDDRAM；**滚屏**（`memmove` 整帧）或 `clear` / 显式 `refresh` 时仍 **全屏 1024 字节**，显著减轻位带 I2C 负载。
+  - `ssd1306_oled.c` 使用 **硬件 I2C1**（100kHz 标准模式，`bsp/clock.h` 中 `BSP_PCLK1_HZ` 用于 CCR/TRISE）；NACK/超时发 STOP 中止。
+  - **刷新策略**：普通 `putc` 仅通过 **`0x21`/`0x22` 窗口** 推送 **6 列×当前页** 到 GDDRAM；**滚屏**（`memmove` 整帧）或 `clear` / 显式 `refresh` 时仍 **全屏 1024 字节**，减轻总线占用。
   - `ssd1306_oled_putc()` 内部完成上述刷新；`app` 中不再每字调用全屏 `refresh`。`ssd1306_oled_clear()` 清缓冲后 **自动全屏 refresh**。
 - **`burning.sh`**
   - 修正 `-m`/`--monitor` 与 `--minicom-only` 语义；脚本先 `cd` 到仓库根，`-d`/`-b` 缺参时报错。
@@ -116,7 +116,7 @@ CH340 接线：
 - `src/app/app.c`：应用初始化与主循环（串口 + OLED）
 - `src/drivers/systick.c`：SysTick 1ms 节拍与延时
 - `src/drivers/usart1.c`：USART1 初始化、发送、RX 中断与环形缓冲
-- `src/drivers/ssd1306_oled.c` / `oled_font5x7.c`：SSD1306 软件 I2C、局部/全屏刷新与字库
+- `src/drivers/ssd1306_oled.c` / `oled_font5x7.c`：SSD1306 硬件 I2C1、局部/全屏刷新与字库
 - `Document/ssd1306/`：SSD1306 英文数据手册等（可选，自管下载）
 - `include/bsp`：寄存器映射、`clock.h`、`board_pins.h`、`rcc_board.h`、`board_init.h`
 - `include/drivers`：驱动接口声明
@@ -130,7 +130,7 @@ CH340 接线：
 
 ### 1. Overview
 
-This is a bare-metal register-level project for `STM32F103C8T6`, built with `CMake + arm-none-eabi`. It includes **USART1** (interrupt RX + ring buffer) and **SSD1306 128×64 OLED** (bit-bang I2C on `PB8`/`PB9`).
+This is a bare-metal register-level project for `STM32F103C8T6`, built with `CMake + arm-none-eabi`. It includes **USART1** (interrupt RX + ring buffer) and **SSD1306 128×64 OLED** (hardware **I2C1** with remap: `PB8`/`PB9`).
 
 ### 2. What This Branch Changed
 
@@ -167,7 +167,7 @@ Follow-up work on OLED and tooling (adds to section 2 above):
   - Legacy `GPIO.h` / `RCC.h` / `SYS.h` folded into `include/bsp/` (`board_pins.h`, `rcc_board.h`; SysTick reload in `clock.h`).
   - `cmake/stm32_sources.cmake` lists firmware sources; top `CMakeLists.txt` includes it.
 - **SSD1306**
-  - More Chinese comments in `ssd1306_oled.c`; bit-bang I2C **checks ACK** and **STOPS** the transaction on NACK.
+  - More Chinese comments in `ssd1306_oled.c`; hardware I2C1 **stops** the transaction on NACK/timeout.
   - **Refresh**: normal `putc` updates only **6 columns × current page** via column/page window commands; **full 1024-byte** push after **scroll** (`memmove`), on **`ssd1306_oled_clear()`**, or explicit **`ssd1306_oled_refresh()`**.
   - `ssd1306_oled_putc()` performs the appropriate refresh internally; `app` no longer calls full refresh per character.
 - **`burning.sh`**
@@ -225,7 +225,7 @@ CH340 wiring:
 - `src/app/app.c`: app init and main loop (UART + OLED)
 - `src/drivers/systick.c`: SysTick 1 ms tick and delay
 - `src/drivers/usart1.c`: USART1 init, TX, RX IRQ and ring buffer
-- `src/drivers/ssd1306_oled.c`, `oled_font5x7.c`: SSD1306 bit-bang I2C, partial/full refresh, font
+- `src/drivers/ssd1306_oled.c`, `oled_font5x7.c`: SSD1306 hardware I2C1, partial/full refresh, font
 - `Document/ssd1306/`: optional SSD1306 datasheet PDFs
 - `include/bsp`: register map, `clock.h`, `board_pins.h`, `rcc_board.h`, `board_init.h`
 - `include/drivers`: driver headers
