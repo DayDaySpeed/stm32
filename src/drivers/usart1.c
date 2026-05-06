@@ -137,3 +137,51 @@ uint8_t usart1_try_read_byte(uint8_t *out)
   g_usart1_rx_tail = (uint8_t)((g_usart1_rx_tail + 1U) % USART1_RX_BUF_SIZE);
   return 1U;
 }
+
+uint8_t usart1_try_read_string(char *out, uint16_t out_size)
+{
+  static char line_buf[USART1_RX_BUF_SIZE];
+  static uint16_t line_len = 0U;
+  uint8_t ch = 0U;
+
+  if ((out == 0) || (out_size < 2U)) {
+    return 0U;
+  }
+
+  /* 持续吃掉环形缓冲中的字节；遇到回车/换行就组一条完整字符串返回。 */
+  while (usart1_try_read_byte(&ch) != 0U) {
+    if ((ch == '\r') || (ch == '\n')) {
+      uint16_t copy_len = line_len;
+      if (line_len == 0U) {
+        continue; /* 忽略空行 */
+      }
+      /* 输出缓冲可能比当前行短：最多只拷 out_size-1，预留 1 字节给 '\0' */
+      if (copy_len > (out_size - 1U)) {
+        copy_len = (uint16_t)(out_size - 1U);
+      }
+      /* 按最终 copy_len 把内部行缓冲搬到调用者提供的 out */
+      for (uint16_t i = 0U; i < copy_len; ++i) {
+        out[i] = line_buf[i];
+      }
+      out[copy_len] = '\0';
+      line_len = 0U;
+      return 1U;
+    }
+
+    /* 处理退格键，便于串口手工输入时修正。 */
+    if ((ch == 0x08U) || (ch == 0x7FU)) {
+      if (line_len > 0U) {
+        line_len--;
+      }
+      continue;
+    }
+
+    if (line_len < (uint16_t)(USART1_RX_BUF_SIZE - 1U)) {
+      line_buf[line_len] = (char)ch;
+      line_len++;
+    }
+    /* 超长行：继续丢弃后续字符，直到收到回车再结束该行。 */
+  }
+
+  return 0U;
+}

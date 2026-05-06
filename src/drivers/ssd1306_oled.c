@@ -56,12 +56,21 @@ static void i2c1_gpio_remap_init(void)
   GPIOB_CRH = (GPIOB_CRH & 0xFFFFFF00UL) | 0x000000FFUL;
 }
 
+/*
+ * 按 RM 要求：改 CCR/TRISE/CR2 前应先关 PE，配好后再开 PE。
+ * CR2.FREQ = PCLK1(MHz)；CCR 决定 SCL 分频；TRISE 与标准模式最大上升时间(≈1µs)对齐。
+ */
 static void i2c1_periph_init(void)
 {
+  /* 关闭外设，否则某些位可能锁死不可写 */
   I2C1_CR1 &= (uint32_t)~I2C_CR1_PE_BIT;
+  /* CR2[5:0]：I2C 外设挂在 APB1 上的时钟频率，单位 MHz（与 BSP_PCLK1_HZ 一致） */
   I2C1_CR2 = (uint32_t)I2C1_CR2_FREQ_MHZ & 0x3FUL;
+  /* TRISE[5:0]：SCL 边沿允许的最大上升时间（以 PCLK1 周期换算），标准模式常用 FREQ_MHz+1 */
   I2C1_TRISE = (uint32_t)I2C1_TRISE_VAL & 0x3FUL;
+  /* CCR[11:0]：SCL 周期分频；标准 100kHz 时 CCR ≈ PCLK1/(2×100k)，且 bit15 F/S=0 表示标准模式 */
   I2C1_CCR = (uint32_t)I2C1_SM_CCR & 0xFFFUL;
+  /* 最后再使能 I2C1，开始按上述参数工作 */
   I2C1_CR1 = I2C_CR1_PE_BIT;
 }
 
@@ -70,53 +79,74 @@ static void i2c1_periph_init(void)
  */
 static uint8_t i2c1_wait_sr1(uint32_t mask, uint32_t expect)
 {
+  /* 轮询等待 SR1 达到目标状态；同时做超时保护，避免外设异常时死循环。 */
   for (volatile uint32_t n = 0U; n < I2C1_TIMEOUT_ITER; ++n) {
     const uint32_t sr1 = I2C1_SR1;
+    /* AF=1 表示应答失败（常见于从机 NACK），立即清错并发 STOP 结束事务。 */
     if ((sr1 & I2C_SR1_AF_BIT) != 0U) {
+      /* 某些状态位的清除依赖读 SR1/SR2 的顺序，先执行一次读序列。 */
       (void)I2C1_SR1;
       (void)I2C1_SR2;
+      /* 清 AF 标志位，避免后续事务被遗留错误状态影响。 */
       I2C1_SR1 &= (uint32_t)~I2C_SR1_AF_BIT;
+      /* 主机发 STOP，释放总线。 */
       I2C1_CR1 |= I2C_CR1_STOP_BIT;
       return 0U;
     }
+    /* 当 (SR1 & mask) 等于期望值 expect，表示等到了目标事件。 */
     if ((sr1 & mask) == expect) {
       return 1U;
     }
   }
+  /* 超时仍未等到目标状态：主动 STOP，防止总线一直处于占用状态。 */
   I2C1_CR1 |= I2C_CR1_STOP_BIT;
   return 0U;
 }
 
-/*
+/*  对于SSD1306
  * 单帧写：START → 7 位地址写 → 控制字节 ctrl（0x00 命令流 / 0x40 显存流）→ payload → STOP。
+ */
+/*
+ * 发起一次 I2C1 主机写事务：
+ *   START -> 7位地址+W -> 控制字节(ctrl) -> payload若干字节 -> STOP
+ * 返回值：
+ *   1 = 整个事务成功完成
+ *   0 = 任一步骤 NACK/超时，内部会发 STOP 收尾
  */
 static uint8_t i2c1_write_ctrl_then_bytes(uint8_t addr7, uint8_t ctrl, const uint8_t *payload, size_t payload_len)
 {
+  /* 若总线正忙（BUSY=1），先等一小段时间，避免与前一事务冲突。 */
   for (volatile uint32_t n = 0U; n < I2C1_TIMEOUT_ITER; ++n) {
     if ((I2C1_SR2 & I2C_SR2_BUSY_BIT) == 0U) {
       break;
     }
   }
 
+  /* 1) 发送 START，等待 SB=1（EV5） */
   I2C1_CR1 |= I2C_CR1_START_BIT;
   if (i2c1_wait_sr1(I2C_SR1_SB_BIT, I2C_SR1_SB_BIT) == 0U) {
     return 0U;
   }
 
+  /* 2) 写入从机地址（7位左移 + W=0） */
   I2C1_DR = (uint32_t)(addr7 << 1);
 
+  /* 3) 等待地址阶段完成（ADDR=1，EV6） */
   if (i2c1_wait_sr1(I2C_SR1_ADDR_BIT, I2C_SR1_ADDR_BIT) == 0U) {
     return 0U;
   }
 
+  /* 4) 按手册读 SR1 再读 SR2，清除 ADDR 状态，进入数据阶段 */
   (void)I2C1_SR1;
   (void)I2C1_SR2;
 
+  /* 5) 等待 TXE=1（EV8），写控制字节（SSD1306: 0x00 命令流 / 0x40 数据流） */
   if (i2c1_wait_sr1(I2C_SR1_TXE_BIT, I2C_SR1_TXE_BIT) == 0U) {
     return 0U;
   }
   I2C1_DR = (uint32_t)ctrl;
 
+  /* 6) 逐字节写负载：每次先等 TXE，再写 DR */
   for (size_t i = 0U; i < payload_len; ++i) {
     if (i2c1_wait_sr1(I2C_SR1_TXE_BIT, I2C_SR1_TXE_BIT) == 0U) {
       return 0U;
@@ -124,10 +154,12 @@ static uint8_t i2c1_write_ctrl_then_bytes(uint8_t addr7, uint8_t ctrl, const uin
     I2C1_DR = (uint32_t)payload[i];
   }
 
+  /* 7) 等待 BTF=1：最后一个字节已从移位寄存器真正发出 */
   if (i2c1_wait_sr1(I2C_SR1_BTF_BIT, I2C_SR1_BTF_BIT) == 0U) {
     return 0U;
   }
 
+  /* 8) 发 STOP 结束事务，短暂延时让 STOP 传播到总线 */
   I2C1_CR1 |= I2C_CR1_STOP_BIT;
   for (volatile uint32_t d = 0U; d < 2000U; ++d) {
     __asm volatile("" ::: "memory");
@@ -157,22 +189,27 @@ static uint8_t oled_push_gddram(const uint8_t *data, size_t len)
  * 只更新 g_fb 中一页里的一段连续列（水平寻址下与 GDDRAM 顺序一致）。
  * col0：起始列；page：页号 0～7；ncol：列数（通常 6，含字间距列）。底层为硬件 I2C1。
  */
-static void ssd1306_oled_refresh_region(unsigned col0, unsigned page, unsigned ncol)
+static void ssd1306_oled_refresh_region(unsigned int col0, unsigned int page, unsigned int ncol)
 {
+  /* 参数检查 */
   if (ncol == 0U || page >= SSD1306_PAGE_COUNT) {
     return;
   }
+  /* 起始列不能超出屏宽 */
   if (col0 >= SSD1306_WIDTH) {
     return;
   }
+  /* 如果起始列加上列数超出屏宽，则截断 */
   if (col0 + ncol > SSD1306_WIDTH) {
     ncol = SSD1306_WIDTH - col0;
   }
   {
     const uint8_t col_end = (uint8_t)(col0 + ncol - 1U);
     const uint8_t pg = (uint8_t)page;
+    /* setwin = Set Window：先设列范围，再设页范围，只刷新指定矩形区域 */
     const uint8_t setwin[] = {
-        0x21U, (uint8_t)col0, col_end, 0x22U, pg, pg,
+        0x21U, (uint8_t)col0, col_end, /* 0x21: Set Column Address, 起始列/结束列 */
+        0x22U, pg, pg,                 /* 0x22: Set Page Address, 起始页/结束页（这里同一页） */
     };
     if (oled_send_commands(setwin, sizeof setwin) == 0U) {
       return;
@@ -209,11 +246,15 @@ void ssd1306_oled_init(void)
 {
   /* RCC：IOPB / AFIO / I2C1 由 bsp_board_init() 统一打开 */
 
+  /* 1) 把 I2C1 重映射到 PB8/PB9，并配置为复用开漏输出 */
   i2c1_gpio_remap_init();
+  /* 2) 初始化 I2C1 外设时序参数（CR2/CCR/TRISE）并使能 PE */
   i2c1_periph_init();
 
+  /* 3) 初始化文本光标位置：从左上角（第0列、第0页）开始输出 */
   g_col_px = 0U;
   g_row_page = 0U;
+  /* 4) 清空本地帧缓冲，避免上电后显示历史脏数据 */
   (void)memset(g_fb, 0, sizeof g_fb);
 
   /*
@@ -235,12 +276,15 @@ void ssd1306_oled_init(void)
    * 0xA6       非反色（白像素=亮）
    * 0xAF       开显示
    */
+  /* SSD1306 上电初始化命令序列（按手册推荐顺序） */
   static const uint8_t init_cmds[] = {
       0xAEU, 0xD5U, 0x80U, 0xA8U, 0x3FU, 0xD3U, 0x00U, 0x40U, 0x8DU, 0x14U,
       0x20U, 0x00U, 0xA1U, 0xC8U, 0xDAU, 0x12U, 0x81U, 0xCFU, 0xD9U, 0xF1U,
       0xDBU, 0x40U, 0xA4U, 0xA6U, 0xAFU,
   };
+  /* 下发初始化命令，让控制器进入可显示状态 */
   (void)oled_send_commands(init_cmds, sizeof init_cmds);
+  /* 把当前帧缓冲（此时为全 0）同步到面板，确保上电后是干净黑屏 */
   ssd1306_oled_refresh();
 }
 
@@ -304,9 +348,11 @@ void ssd1306_oled_putc(uint8_t c)
     }
     g_col_px += 6U;
 
+    /* 若本次过程中发生过滚屏，g_fb 大范围搬移，必须整屏刷新保证显示一致 */
     if (need_full != 0U) {
       ssd1306_oled_refresh();
     } else {
+      /* 正常单字符写入时，只刷新当前字符占用的 6 列（5 列字模 + 1 列字间距） */
       ssd1306_oled_refresh_region(col0, row_pg, 6U);
     }
   }
@@ -320,10 +366,12 @@ void ssd1306_oled_putc(uint8_t c)
  */
 void ssd1306_oled_refresh(void)
 {
-  /* 列 0～127，页 0～7（整屏） */
+  /* 1) 把 SSD1306 的写入窗口设为整屏：列 0~127、页 0~7 */
   static const uint8_t setwin[] = {0x21U, 0x00U, 0x7FU, 0x22U, 0x00U, 0x07U};
+  /* 2) 先下发窗口命令；失败则直接返回，避免继续写数据 */
   if (oled_send_commands(setwin, sizeof setwin) == 0U) {
     return;
   }
+  /* 3) 再把本地帧缓冲 g_fb 的 1024 字节整包推到 GDDRAM */
   (void)oled_push_gddram(g_fb, FB_SIZE);
 }
