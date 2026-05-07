@@ -21,7 +21,7 @@
 
 ### 1. 项目简介
 
-这是一个基于 `STM32F103C8T6` 的裸机寄存器工程，使用 `CMake + arm-none-eabi` 工具链。功能上包含 **`USART1` 串口**（中断接收 + 环形缓冲）与 **`SSD1306` 128×64 OLED**（`I2C1` 硬件主机，`PB8/PB9` 为重映射脚）。
+这是一个基于 `STM32F103C8T6` 的裸机寄存器工程，使用 `CMake + arm-none-eabi` 工具链。当前采用 **分层工业化写法**：`bsp + common + hal + drivers + app`，其中 `I2C1` 与 `USART1` 已重构为可复用驱动路径。
 
 ### 2. 本分支做了什么
 
@@ -69,6 +69,22 @@
   - `docs/CODING_STYLE.md`、`USART.md` 路径说明随 `bsp` 调整。
   - 可选：英文原版数据手册可置于 `Document/ssd1306/`（例如 `SSD1306_Solomon_Rev1.1_EN.pdf`）。
 
+### 2.2 工业级重构（v3）
+
+- **架构分层升级**
+  - 新增 `include/common` / `src/common`：公共状态码、宏、通用环形缓冲。
+  - 新增 `include/hal` / `src/hal`：`i2c1_master` 事务层，屏蔽设备驱动对寄存器细节依赖。
+  - `drivers/ssd1306_oled.c` 升级为“**设备对象 + 总线回调**”写法（`ssd1306_t`）。
+- **USART 驱动工业化**
+  - `usart1` 接收链路改为复用型 `ring_buffer_t`。
+  - 新增行策略配置：`CR/LF/CRLF`（`usart1_set_line_policy`）。
+- **应用层迁移**
+  - `app` 回到“按行读取并显示到 OLED”的业务流。
+  - 移除临时逐字节十六进制调试逻辑。
+- **构建质量门禁**
+  - CMake 新增选项：`DEBUG_LOG`、`ASSERT_LEVEL`、`OLED_REFRESH_MODE`。
+  - 新增 `format` / `lint` 目标（自动探测 `clang-format` / `cppcheck`）。
+
 ### 3. 依赖与构建
 
 依赖：
@@ -113,13 +129,17 @@ CH340 接线：
 
 - `src/main.c`：程序入口；先 `bsp_board_init()`，再 `app_init()` / 中断转发
 - `src/bsp/board_init.c`：板级时钟门控（APB2 上本板外设）
-- `src/app/app.c`：应用初始化与主循环（串口 + OLED）
+- `src/app/app.c`：应用初始化与主循环（串口按行输入 + OLED 文本输出）
 - `src/drivers/systick.c`：SysTick 1ms 节拍与延时
-- `src/drivers/usart1.c`：USART1 初始化、发送、RX 中断与环形缓冲
-- `src/drivers/ssd1306_oled.c` / `oled_font5x7.c`：SSD1306 硬件 I2C1、局部/全屏刷新与字库
+- `src/common/ring_buffer.c`：可复用环形缓冲实现
+- `src/hal/i2c1_master.c`：I2C1 主机事务层（轮询 + 超时 + NACK 收敛）
+- `src/drivers/usart1.c`：USART1 初始化、发送、RX 中断、行策略读取
+- `src/drivers/ssd1306_oled.c` / `oled_font5x7.c`：SSD1306 设备对象驱动、局部/全屏刷新与字库
 - `Document/ssd1306/`：SSD1306 英文数据手册等（可选，自管下载）
 - `include/bsp`：寄存器映射、`clock.h`、`board_pins.h`、`rcc_board.h`、`board_init.h`
-- `include/drivers`：驱动接口声明
+- `include/common`：状态码、通用宏、基础容器接口
+- `include/hal`：硬件事务层接口
+- `include/drivers`：设备驱动接口声明（含 `ssd1306_t` 对象 API）
 - `include/app`：应用接口声明
 - `cmake/stm32_sources.cmake`：固件源文件清单（供 `CMakeLists.txt` 引用）
 - `startup/startup_stm32f103c8tx.s`：启动与向量表
@@ -130,7 +150,7 @@ CH340 接线：
 
 ### 1. Overview
 
-This is a bare-metal register-level project for `STM32F103C8T6`, built with `CMake + arm-none-eabi`. It includes **USART1** (interrupt RX + ring buffer) and **SSD1306 128×64 OLED** (hardware **I2C1** with remap: `PB8`/`PB9`).
+This is a bare-metal register-level project for `STM32F103C8T6`, built with `CMake + arm-none-eabi`. It now uses an industrialized layered layout: **bsp + common + hal + drivers + app**, with reusable USART and I2C transaction paths.
 
 ### 2. What This Branch Changed
 

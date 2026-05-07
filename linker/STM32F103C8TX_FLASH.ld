@@ -26,6 +26,11 @@ SECTIONS
     *(.rodata*)
     *(.glue_7)
     *(.glue_7t)
+    *(.init)
+    *(.fini)
+    *(.preinit_array*)
+    *(.init_array*)
+    *(.fini_array*)
     *(.eh_frame)
     . = ALIGN(4);
     _etext = .;

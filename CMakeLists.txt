@@ -14,6 +14,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+option(DEBUG_LOG "Enable lightweight debug logging macros" OFF)
+set(ASSERT_LEVEL "1" CACHE STRING "Assert strictness level (0-2)")
+set(OLED_REFRESH_MODE "AUTO" CACHE STRING "OLED refresh mode: AUTO, FULL, REGION")
+
 # C 语言标准
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -45,12 +49,20 @@ target_include_directories(${PROJECT_NAME}.elf PRIVATE
   ${CMAKE_SOURCE_DIR}/include
   ${CMAKE_SOURCE_DIR}/include/app
   ${CMAKE_SOURCE_DIR}/include/bsp
+  ${CMAKE_SOURCE_DIR}/include/common
   ${CMAKE_SOURCE_DIR}/include/drivers
+  ${CMAKE_SOURCE_DIR}/include/hal
 )
 
 # 目标专用编译选项
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
   ${COMMON_FLAGS}
+)
+
+target_compile_definitions(${PROJECT_NAME}.elf PRIVATE
+  STM_DEBUG_LOG=$<BOOL:${DEBUG_LOG}>
+  STM_ASSERT_LEVEL=${ASSERT_LEVEL}
+  OLED_REFRESH_MODE_${OLED_REFRESH_MODE}=1
 )
 
 # 目标专用链接选项：
@@ -90,3 +102,44 @@ add_custom_target(flash
   DEPENDS ${PROJECT_NAME}.elf
   COMMENT "Flash with OpenOCD"
 )
+
+find_program(CLANG_FORMAT_EXE clang-format)
+if(CLANG_FORMAT_EXE)
+  add_custom_target(format
+    COMMAND ${CLANG_FORMAT_EXE} -i
+            ${CMAKE_SOURCE_DIR}/src/main.c
+            ${CMAKE_SOURCE_DIR}/src/app/app.c
+            ${CMAKE_SOURCE_DIR}/src/bsp/board_init.c
+            ${CMAKE_SOURCE_DIR}/src/common/ring_buffer.c
+            ${CMAKE_SOURCE_DIR}/src/hal/i2c1_master.c
+            ${CMAKE_SOURCE_DIR}/src/drivers/usart1.c
+            ${CMAKE_SOURCE_DIR}/src/drivers/ssd1306_oled.c
+            ${CMAKE_SOURCE_DIR}/src/drivers/systick.c
+            ${CMAKE_SOURCE_DIR}/include/common/stm_status.h
+            ${CMAKE_SOURCE_DIR}/include/common/stm_macros.h
+            ${CMAKE_SOURCE_DIR}/include/common/ring_buffer.h
+            ${CMAKE_SOURCE_DIR}/include/hal/i2c1_master.h
+            ${CMAKE_SOURCE_DIR}/include/drivers/usart1.h
+            ${CMAKE_SOURCE_DIR}/include/drivers/ssd1306_oled.h
+    COMMENT "Format source files with clang-format"
+  )
+else()
+  add_custom_target(format
+    COMMAND ${CMAKE_COMMAND} -E echo "clang-format not found, install to use target format"
+  )
+endif()
+
+find_program(CPPCHECK_EXE cppcheck)
+if(CPPCHECK_EXE)
+  add_custom_target(lint
+    COMMAND ${CPPCHECK_EXE} --enable=warning,style,performance --error-exitcode=1
+            --std=c11 --quiet
+            -I ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/src
+    COMMENT "Run cppcheck static analysis"
+  )
+else()
+  add_custom_target(lint
+    COMMAND ${CMAKE_COMMAND} -E echo "cppcheck not found, install to use target lint"
+  )
+endif()
