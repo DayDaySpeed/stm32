@@ -6,6 +6,7 @@
   - [1. 项目简介](#1-项目简介)
   - [2. 本分支做了什么](#2-本分支做了什么)
   - [2.1 近期更新](#21-近期更新)
+  - [2.3 TIM 秒级定时（1 字节计数）](#23-tim-秒级定时1-字节计数)
   - [3. 依赖与构建](#3-依赖与构建)
   - [4. 烧录与串口工具](#4-烧录与串口工具)
   - [5. 目录结构](#5-目录结构)
@@ -13,6 +14,7 @@
   - [1. Overview](#1-overview)
   - [2. What This Branch Changed](#2-what-this-branch-changed)
   - [2.1 Recent Updates](#21-recent-updates)
+  - [2.2 TIM Second Tick (1-Byte Counter)](#22-tim-second-tick-1-byte-counter)
   - [3. Build](#3-build)
   - [4. Flash and Monitor](#4-flash-and-monitor)
   - [5. Project Layout](#5-project-layout)
@@ -84,6 +86,26 @@
 - **构建质量门禁**
   - CMake 新增选项：`DEBUG_LOG`、`ASSERT_LEVEL`、`OLED_REFRESH_MODE`。
   - 新增 `format` / `lint` 目标（自动探测 `clang-format` / `cppcheck`）。
+
+### 2.3 TIM 秒级定时（1 字节计数）
+
+本分支已将 TIM2 改为“上层可配置秒周期”的接口，并在应用层实现了一个 `uint8_t` 秒计数器，用于按秒刷新 OLED 文本。
+
+- **驱动接口（可配置周期）**
+  - 使用 `tim2_init_periodic_interrupt_seconds(period_seconds)` 初始化 TIM2 更新中断。
+  - `period_seconds=1` 时即每秒触发一次中断；当前 `app_init()` 传入 `1U`。
+  - 中断入口链路：`TIM2_IRQHandler -> tim2_irq_handler() -> tim2_on_second_interrupt()`。
+- **应用层 1 字节计时实现**
+  - 在 `src/app/app.c` 的 `tim2_on_second_interrupt()` 中，使用 `static uint8_t tim` 作为秒计数。
+  - `tim < 60` 时显示 `TIM=%usec`；`tim >= 60` 时按 `min = tim / 60`、`sec = tim % 60` 显示 `TIM=%umin%usec`。
+  - 每次中断后 `++tim`，实现“每秒自增”。
+- **为何用 1 字节**
+  - RAM 占用极小，演示定时/中断/OLED 联动足够直观。
+  - 便于在早期裸机调试阶段快速观察中断是否稳定触发。
+- **边界与注意事项**
+  - `uint8_t` 范围为 `0~255`，计数到 `255` 后会回绕到 `0`（约 `4 分 15 秒` 后循环）。
+  - 回调中调用 `ssd1306_oled_write_text_atf()` 属于 ISR 内执行业务，若后续业务变重，建议改为“ISR 只置标志，主循环再刷新显示”。
+  - 当前 TIM2 分频策略按 10kHz 基准 + 16 位 ARR 计算，可配置秒数存在上限（现实现可用于较小秒周期场景）。
 
 ### 3. 依赖与构建
 
@@ -197,6 +219,26 @@ Follow-up work on OLED and tooling (adds to section 2 above):
 - **Docs**
   - `docs/CODING_STYLE.md` and `USART.md` updated for new `bsp` paths.
   - Optional English datasheet under `Document/ssd1306/` (e.g. `SSD1306_Solomon_Rev1.1_EN.pdf`).
+
+### 2.2 TIM Second Tick (1-Byte Counter)
+
+This branch upgrades TIM2 init to a configurable-second API and uses an app-level `uint8_t` second counter to refresh OLED content once per tick.
+
+- **Driver API (configurable period)**
+  - Use `tim2_init_periodic_interrupt_seconds(period_seconds)` to configure TIM2 update IRQ.
+  - `period_seconds=1` means one interrupt per second (currently used in `app_init()`).
+  - IRQ chain: `TIM2_IRQHandler -> tim2_irq_handler() -> tim2_on_second_interrupt()`.
+- **App-level 1-byte timer**
+  - `src/app/app.c` implements `tim2_on_second_interrupt()` with `static uint8_t tim`.
+  - For `tim < 60`, OLED prints `TIM=%usec`; for `tim >= 60`, it prints `TIM=%umin%usec` with `min = tim / 60`, `sec = tim % 60`.
+  - `tim` increments once per interrupt (`++tim`).
+- **Why 1 byte**
+  - Minimal RAM footprint while keeping timer/IRQ/OLED behavior easy to observe.
+  - Suitable for early bare-metal bring-up and interrupt path validation.
+- **Limitations / notes**
+  - `uint8_t` wraps at 255 back to 0 (loop period ~4m15s at 1Hz).
+  - OLED writes are currently done inside ISR; for heavier workloads, prefer ISR-sets-flag and render in main loop.
+  - Current TIM2 setup uses a 10kHz base with a 16-bit ARR budget, so valid second periods are limited to small values.
 
 ### 3. Build
 
