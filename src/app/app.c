@@ -4,6 +4,7 @@
 
 #include "drivers/ssd1306_oled.h"
 #include "drivers/systick.h"
+#include "drivers/tim2.h"
 #include "drivers/usart1.h"
 
 void app_init(void) {
@@ -19,21 +20,28 @@ void app_init(void) {
     while (1) {
     }
   }
+  if (tim2_init_periodic_interrupt_seconds(1U) == 0U) {
+    while (1) {
+    }
+  }
 
   usart1_send_string("\r\nUSART1 ready (PA9/PA10,115200 8N1)\r\n");
   usart1_send_string("OLED ready (I2C1 remap PB8/PB9).\r\n");
   usart1_send_string("Type a line, press Enter to flush to OLED.\r\n");
 }
 
+
+
+static uint8_t page_count = 0U;
 void app_run_forever(void) {
   char line[64];
-  static uint8_t page_count = 0U;
   /* 测试滚动 */
-  while(page_count < 200){
-    ssd1306_oled_write_text_atf(page_count, 80U, "page=%u", page_count);
-    ++page_count;
-  }
+  // while(page_count < 200){
+  //   ssd1306_oled_write_text_atf(page_count, 80U, "page=%u", page_count);
+  //   ++page_count;
+  // }
   while (1) {
+
     if (usart1_try_read_string(line, (uint16_t)sizeof(line)) != 0U) {
       usart1_send_string("recv: ");
       usart1_send_string(line);
@@ -43,4 +51,19 @@ void app_run_forever(void) {
       ++page_count;
     }
   }
+}
+
+//定时器
+void tim2_on_second_interrupt(void) {
+  static uint8_t tim = 0U;
+  if (tim < 60U) {
+    ssd1306_oled_write_text_atf(page_count, 0U, "TIM=%usec --- page=%u", tim, page_count);
+    ++page_count;
+  }else{
+    uint8_t min = tim / 60U;
+    uint8_t sec = tim % 60U;
+    ssd1306_oled_write_text_atf(page_count, 0U, "TIM=%umin%usec --- page=%u", min, sec, page_count);
+    ++page_count;
+  }
+  ++tim;
 }

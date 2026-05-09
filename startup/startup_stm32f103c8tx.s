@@ -67,7 +67,7 @@ g_pfnVectors:
   .word Default_Handler     /* [41] IRQ25 */
   .word Default_Handler     /* [42] IRQ26 */
   .word Default_Handler     /* [43] IRQ27 */
-  .word Default_Handler     /* [44] IRQ28 */
+  .word TIM2_IRQHandler     /* [44] IRQ28 = TIM2 */
   .word Default_Handler     /* [45] IRQ29 */
   .word Default_Handler     /* [46] IRQ30 */
   .word Default_Handler     /* [47] IRQ31 */
@@ -149,5 +149,7 @@ Default_Handler:
 .thumb_set PendSV_Handler, Default_Handler
 .weak SysTick_Handler
 .thumb_set SysTick_Handler, Default_Handler
+.weak TIM2_IRQHandler
+.thumb_set TIM2_IRQHandler, Default_Handler
 .weak USART1_IRQHandler
 .thumb_set USART1_IRQHandler, Default_Handler

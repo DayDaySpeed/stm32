@@ -9,6 +9,6 @@
 #define RCC_BOARD_APB2_ENABLE_MASK                                               \
   ((uint32_t)(RCC_AFIOEN_BIT | RCC_IOPAEN_BIT | RCC_IOPBEN_BIT | RCC_USART1EN_BIT))
 
-#define RCC_BOARD_APB1_ENABLE_MASK ((uint32_t)RCC_I2C1EN_BIT)
+#define RCC_BOARD_APB1_ENABLE_MASK ((uint32_t)(RCC_I2C1EN_BIT | RCC_TIM2EN_BIT))
 
 #endif

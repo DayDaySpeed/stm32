@@ -75,9 +75,18 @@ static uint8_t usart1_is_line_end(uint8_t ch, uint8_t *consume_next_lf) {
   }
 }
 
+/*
+ * 开启 USART1 接收中断路径。
+ *
+ * 两步都必须完成：
+ * 1) 外设侧放行：RXNEIE=1，接收数据寄存器非空时可向 NVIC 发起中断请求；
+ * 2) NVIC 侧放行：使能 USART1 IRQ 通道（IRQn=37，对应 ISER1 bit5）。
+ *
+ * 注意：本函数只负责“开中断通路”，不负责 USART 基础初始化（波特率、GPIO、UE/TE/RE）。
+ */
 void usart1_enable_rx_interrupt(void) {
-  USART1_CR1 |= USART_CR1_RXNEIE_BIT;
-  NVIC_ISER1 |= NVIC_USART1_IRQ_BIT;
+  USART1_CR1 |= USART_CR1_RXNEIE_BIT; /* 外设允许 RXNE 中断源 */
+  NVIC_ISER1 |= NVIC_USART1_IRQ_BIT;  /* 内核侧放行 USART1 IRQ */
 }
 
 void usart1_irq_handler(void) {
@@ -91,29 +100,48 @@ void usart1_irq_handler(void) {
   (void)ring_buffer_push_byte(&g_usart1_rx_rb, data);
 }
 
+/*
+ * 初始化 USART1 基础收发能力（不直接开启接收中断）。
+ *
+ * 初始化内容：
+ * - 依据当前 PCLK2 与过采样方式计算并写入 BRR；
+ * - 初始化接收环形缓冲区；
+ * - 配置 PA9/PA10 复用功能（TX=复用推挽输出，RX=浮空输入）；
+ * - 配置 OVER8 并使能 UE/TE/RE。
+ *
+ * 返回值：
+ * - 1: 初始化成功
+ * - 0: 参数或 BRR 计算不合法
+ */
 uint8_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling) {
   uint16_t brr = 0U;
 
-  if (usart1_compute_brr(SYSCLK_HZ, baudrate, oversampling, &brr) == 0U) {
+  /* 根据时钟与目标波特率计算 BRR，失败直接返回。 */
+  if (usart1_compute_brr(BSP_PCLK2_HZ, baudrate, oversampling, &brr) == 0U) {
     return 0U;
   }
 
+  /* 初始化接收缓存，供中断接收路径写入。 */
   (void)ring_buffer_init(&g_usart1_rx_rb, g_usart1_rx_storage,
                          USART1_RX_BUF_SIZE);
 
+  /* PA9(TX)/PA10(RX) 先清配置位，再写入目标模式。 */
   BOARD_USART1_GPIO_CRH_REG &=
       ~(BOARD_GPIO_PA9_CRH_MASK | BOARD_GPIO_PA10_CRH_MASK);
   BOARD_USART1_GPIO_CRH_REG |=
       (BOARD_GPIO_PA9_AF_PP_50MHZ | BOARD_GPIO_PA10_INPUT_FLOATING);
 
+  /* 写入分频结果，决定串口位时间。 */
   USART1_BRR = (uint32_t)brr;
 
+  /* 选择 8 倍或 16 倍过采样。 */
   if (oversampling == USART_OVERSAMPLING_8) {
     USART1_CR1 |= USART_CR1_OVER8_BIT;
   } else {
     USART1_CR1 &= ~USART_CR1_OVER8_BIT;
   }
 
+  /* 最后打开 USART、发送器和接收器。 */
   USART1_CR1 |= (USART_CR1_UE_BIT | USART_CR1_TE_BIT | USART_CR1_RE_BIT);
   return 1U;
 }

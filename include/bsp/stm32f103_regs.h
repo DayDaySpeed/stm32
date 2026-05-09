@@ -3,46 +3,82 @@
 
 #include <stdint.h>
 
-/* RCC */
-#define RCC_BASE            (0x40021000UL)
-#define RCC_APB1ENR         (*(volatile uint32_t *)(RCC_BASE + 0x1CUL))
-#define RCC_APB2ENR         (*(volatile uint32_t *)(RCC_BASE + 0x18UL))
+/* RCC（复位与时钟控制，Reset and Clock Control）：负责时钟源选择、PLL 配置、总线分频与外设时钟门控 */
+#define RCC_BASE            (0x40021000UL) /* RCC 外设基地址 */
+#define RCC_CR              (*(volatile uint32_t *)(RCC_BASE + 0x00UL)) /* 时钟控制寄存器：HSI/HSE/PLL 开关与就绪位 */
+#define RCC_CFGR            (*(volatile uint32_t *)(RCC_BASE + 0x04UL)) /* 时钟配置寄存器：系统时钟源、分频、PLL 配置 */
+#define RCC_APB1ENR         (*(volatile uint32_t *)(RCC_BASE + 0x1CUL)) /* APB1 外设时钟使能寄存器 */
+#define RCC_APB2ENR         (*(volatile uint32_t *)(RCC_BASE + 0x18UL)) /* APB2 外设时钟使能寄存器 */
 
-#define RCC_I2C1EN_BIT      (1U << 21)
+#define RCC_TIM2EN_BIT      (1U << 0)  /* TIM2 时钟使能（APB1ENR） */
+#define RCC_I2C1EN_BIT      (1U << 21) /* I2C1 时钟使能（APB1ENR） */
 
-#define RCC_AFIOEN_BIT      (1U << 0)
-#define RCC_IOPAEN_BIT      (1U << 2)
-#define RCC_IOPBEN_BIT      (1U << 3)
-#define RCC_IOPCEN_BIT      (1U << 4)
-#define RCC_USART1EN_BIT    (1U << 14)
+#define RCC_AFIOEN_BIT      (1U << 0)  /* AFIO 时钟使能（APB2ENR） */
+#define RCC_IOPAEN_BIT      (1U << 2)  /* GPIOA 时钟使能（APB2ENR） */
+#define RCC_IOPBEN_BIT      (1U << 3)  /* GPIOB 时钟使能（APB2ENR） */
+#define RCC_IOPCEN_BIT      (1U << 4)  /* GPIOC 时钟使能（APB2ENR） */
+#define RCC_USART1EN_BIT    (1U << 14) /* USART1 时钟使能（APB2ENR） */
 
-/* AFIO（重映射等） */
-#define AFIO_BASE           (0x40010000UL)
-#define AFIO_MAPR           (*(volatile uint32_t *)(AFIO_BASE + 0x04UL))
+#define RCC_CR_HSION_BIT    (1U << 0)  /* HSI 时钟开关 */
+#define RCC_CR_HSIRDY_BIT   (1U << 1)  /* HSI 就绪标志 */
+#define RCC_CR_HSEON_BIT    (1U << 16) /* HSE 时钟开关 */
+#define RCC_CR_HSERDY_BIT   (1U << 17) /* HSE 就绪标志 */
+#define RCC_CR_PLLON_BIT    (1U << 24) /* PLL 开关 */
+#define RCC_CR_PLLRDY_BIT   (1U << 25) /* PLL 就绪标志 */
+
+#define RCC_CFGR_SW_MASK    (3U << 0)   /* 系统时钟源选择字段掩码（SW[1:0]） */
+#define RCC_CFGR_SW_HSI     (0U << 0)   /* 系统时钟选择 HSI */
+#define RCC_CFGR_SW_PLL     (2U << 0)   /* 系统时钟选择 PLL */
+#define RCC_CFGR_SWS_MASK   (3U << 2)   /* 当前系统时钟源状态字段掩码（SWS[1:0]） */
+#define RCC_CFGR_SWS_HSI    (0U << 2)   /* 当前系统时钟来自 HSI */
+#define RCC_CFGR_SWS_PLL    (2U << 2)   /* 当前系统时钟来自 PLL */
+#define RCC_CFGR_HPRE_MASK  (0xFU << 4) /* AHB 分频字段掩码（HPRE[3:0]） */
+#define RCC_CFGR_HPRE_DIV1  (0U << 4)   /* AHB 分频 = /1（HCLK=SYSCLK） */
+#define RCC_CFGR_PPRE1_MASK (0x7U << 8) /* APB1 分频字段掩码（PPRE1[2:0]） */
+#define RCC_CFGR_PPRE1_DIV1 (0U << 8)   /* APB1 分频 = /1 */
+#define RCC_CFGR_PPRE1_DIV2 (4U << 8)   /* APB1 分频 = /2 */
+#define RCC_CFGR_PPRE2_MASK (0x7U << 11) /* APB2 分频字段掩码（PPRE2[2:0]） */
+#define RCC_CFGR_PPRE2_DIV1 (0U << 11)  /* APB2 分频 = /1 */
+#define RCC_CFGR_PLLSRC_MASK (1U << 16) /* PLL 输入源字段掩码（PLLSRC） */
+#define RCC_CFGR_PLLSRC_HSE (1U << 16)  /* PLL 输入源选择 HSE */
+#define RCC_CFGR_PLLXTPRE_MASK (1U << 17) /* HSE 预分频字段掩码（PLLXTPRE） */
+#define RCC_CFGR_PLLXTPRE_HSE_DIV1 (0U << 17) /* HSE 送 PLL 前不分频 */
+#define RCC_CFGR_PLLMUL_MASK (0xFU << 18) /* PLL 倍频字段掩码 */
+#define RCC_CFGR_PLLMUL9    (7U << 18)  /* PLL 倍频 x9（8MHz->72MHz） */
+
+/* FLASH（闪存接口，Flash memory interface）：负责程序 Flash 访问控制，如等待周期与预取缓冲 */
+#define FLASH_BASE          (0x40022000UL) /* Flash 控制器基地址 */
+#define FLASH_ACR           (*(volatile uint32_t *)(FLASH_BASE + 0x00UL)) /* Flash 访问控制寄存器（等待周期/预取） */
+#define FLASH_ACR_LATENCY_2 (2U << 0)  /* Flash 等待周期 2（72MHz 常用） */
+#define FLASH_ACR_PRFTBE_BIT (1U << 4) /* 预取缓冲使能 */
+
+/* AFIO（复用功能 I/O，Alternate Function I/O）：负责外设引脚重映射与复用功能路由 */
+#define AFIO_BASE           (0x40010000UL) /* AFIO 基地址 */
+#define AFIO_MAPR           (*(volatile uint32_t *)(AFIO_BASE + 0x04UL)) /* AF 重映射寄存器 */
 #define AFIO_MAPR_I2C1_REMAP_BIT (1U << 1) /* 1: I2C1_SCL=PB8, I2C1_SDA=PB9 */
 
-/* GPIOA */
-#define GPIOA_BASE          (0x40010800UL)
-#define GPIOA_CRH           (*(volatile uint32_t *)(GPIOA_BASE + 0x04UL))
+/* GPIOA（通用输入输出端口 A，General Purpose Input/Output Port A）：配置 A 口引脚模式并进行输入输出控制 */
+#define GPIOA_BASE          (0x40010800UL) /* GPIOA 基地址 */
+#define GPIOA_CRH           (*(volatile uint32_t *)(GPIOA_BASE + 0x04UL)) /* GPIOA 配置高寄存器（PA8~PA15） */
 
-/* GPIOB */
-#define GPIOB_BASE          (0x40010C00UL)
-#define GPIOB_CRH           (*(volatile uint32_t *)(GPIOB_BASE + 0x04UL))
-#define GPIOB_IDR           (*(volatile uint32_t *)(GPIOB_BASE + 0x08UL))
-#define GPIOB_ODR           (*(volatile uint32_t *)(GPIOB_BASE + 0x0CUL))
-#define GPIOB_BSRR          (*(volatile uint32_t *)(GPIOB_BASE + 0x10UL))
+/* GPIOB（通用输入输出端口 B，General Purpose Input/Output Port B）：配置 B 口引脚模式并进行输入输出控制 */
+#define GPIOB_BASE          (0x40010C00UL) /* GPIOB 基地址 */
+#define GPIOB_CRH           (*(volatile uint32_t *)(GPIOB_BASE + 0x04UL)) /* GPIOB 配置高寄存器（PB8~PB15） */
+#define GPIOB_IDR           (*(volatile uint32_t *)(GPIOB_BASE + 0x08UL)) /* GPIOB 输入数据寄存器 */
+#define GPIOB_ODR           (*(volatile uint32_t *)(GPIOB_BASE + 0x0CUL)) /* GPIOB 输出数据寄存器 */
+#define GPIOB_BSRR          (*(volatile uint32_t *)(GPIOB_BASE + 0x10UL)) /* GPIOB 置位/复位寄存器（原子操作） */
 
-/* GPIOC */
-#define GPIOC_BASE          (0x40011000UL)
-#define GPIOC_CRH           (*(volatile uint32_t *)(GPIOC_BASE + 0x04UL))
-#define GPIOC_ODR           (*(volatile uint32_t *)(GPIOC_BASE + 0x0CUL))
+/* GPIOC（通用输入输出端口 C，General Purpose Input/Output Port C）：配置 C 口引脚模式并进行输入输出控制 */
+#define GPIOC_BASE          (0x40011000UL) /* GPIOC 基地址 */
+#define GPIOC_CRH           (*(volatile uint32_t *)(GPIOC_BASE + 0x04UL)) /* GPIOC 配置高寄存器（PC8~PC15） */
+#define GPIOC_ODR           (*(volatile uint32_t *)(GPIOC_BASE + 0x0CUL)) /* GPIOC 输出数据寄存器 */
 
-/* USART1 */
-#define USART1_BASE         (0x40013800UL)
-#define USART1_SR           (*(volatile uint32_t *)(USART1_BASE + 0x00UL))
-#define USART1_DR           (*(volatile uint32_t *)(USART1_BASE + 0x04UL))
-#define USART1_BRR          (*(volatile uint32_t *)(USART1_BASE + 0x08UL))
-#define USART1_CR1          (*(volatile uint32_t *)(USART1_BASE + 0x0CUL))
+/* USART1（通用同步异步收发器1，Universal Synchronous/Asynchronous Receiver/Transmitter 1）：负责串口发送、接收与中断控制 */
+#define USART1_BASE         (0x40013800UL) /* USART1 基地址 */
+#define USART1_SR           (*(volatile uint32_t *)(USART1_BASE + 0x00UL)) /* 状态寄存器 */
+#define USART1_DR           (*(volatile uint32_t *)(USART1_BASE + 0x04UL)) /* 数据寄存器（读收发写发） */
+#define USART1_BRR          (*(volatile uint32_t *)(USART1_BASE + 0x08UL)) /* 波特率寄存器 */
+#define USART1_CR1          (*(volatile uint32_t *)(USART1_BASE + 0x0CUL)) /* 控制寄存器1 */
 
 #define USART_SR_RXNE_BIT   (1U << 5)   /* 接收数据寄存器非空（有新数据可读） */
 #define USART_SR_TXE_BIT    (1U << 7)   /* 发送数据寄存器空（可写入下一个字节） */
@@ -52,15 +88,15 @@
 #define USART_CR1_UE_BIT    (1U << 13)  /* USART 总使能 */
 #define USART_CR1_OVER8_BIT (1U << 15)  /* 1=8倍过采样，0=16倍过采样 */
 
-/* I2C1（APB1） */
-#define I2C1_BASE           (0x40005400UL)
-#define I2C1_CR1            (*(volatile uint32_t *)(I2C1_BASE + 0x00UL))
-#define I2C1_CR2            (*(volatile uint32_t *)(I2C1_BASE + 0x04UL))
-#define I2C1_DR             (*(volatile uint32_t *)(I2C1_BASE + 0x10UL))
-#define I2C1_SR1            (*(volatile uint32_t *)(I2C1_BASE + 0x14UL))
-#define I2C1_SR2            (*(volatile uint32_t *)(I2C1_BASE + 0x18UL))
-#define I2C1_CCR            (*(volatile uint32_t *)(I2C1_BASE + 0x1CUL))
-#define I2C1_TRISE          (*(volatile uint32_t *)(I2C1_BASE + 0x20UL))
+/* I2C1（内部集成电路总线1，Inter-Integrated Circuit 1）：负责 I2C 主从通信时序与数据传输 */
+#define I2C1_BASE           (0x40005400UL) /* I2C1 基地址 */
+#define I2C1_CR1            (*(volatile uint32_t *)(I2C1_BASE + 0x00UL)) /* 控制寄存器1（PE/START/STOP） */
+#define I2C1_CR2            (*(volatile uint32_t *)(I2C1_BASE + 0x04UL)) /* 控制寄存器2（频率等） */
+#define I2C1_DR             (*(volatile uint32_t *)(I2C1_BASE + 0x10UL)) /* 数据寄存器 */
+#define I2C1_SR1            (*(volatile uint32_t *)(I2C1_BASE + 0x14UL)) /* 状态寄存器1（事件/错误） */
+#define I2C1_SR2            (*(volatile uint32_t *)(I2C1_BASE + 0x18UL)) /* 状态寄存器2（BUSY 等） */
+#define I2C1_CCR            (*(volatile uint32_t *)(I2C1_BASE + 0x1CUL)) /* 时钟控制寄存器 */
+#define I2C1_TRISE          (*(volatile uint32_t *)(I2C1_BASE + 0x20UL)) /* 最大上升时间寄存器 */
 
 #define I2C_CR1_PE_BIT      (1U << 0)   /* 外设使能（Peripheral Enable） */
 #define I2C_CR1_START_BIT   (1U << 8)   /* 主机发 START 条件 */
@@ -74,21 +110,36 @@
 
 #define I2C_SR2_BUSY_BIT    (1U << 1)   /* 总线忙：检测 START 到 STOP 之间的总线占用状态 */
 
-/* NVIC */
-#define NVIC_BASE           (0xE000E100UL)
-#define NVIC_ISER0          (*(volatile uint32_t *)(NVIC_BASE + 0x00UL))
-#define NVIC_ISER1          (*(volatile uint32_t *)(NVIC_BASE + 0x04UL))
+/* TIM2（通用定时器2，General-purpose Timer 2）：负责计时、更新中断、输入捕获与输出比较等定时功能 */
+#define TIM2_BASE           (0x40000000UL) /* TIM2 基地址 */
+#define TIM2_CR1            (*(volatile uint32_t *)(TIM2_BASE + 0x00UL)) /* 控制寄存器1（CEN 等） */
+#define TIM2_DIER           (*(volatile uint32_t *)(TIM2_BASE + 0x0CUL)) /* DMA/中断使能寄存器 */
+#define TIM2_SR             (*(volatile uint32_t *)(TIM2_BASE + 0x10UL)) /* 状态寄存器（UIF 等） */
+#define TIM2_EGR            (*(volatile uint32_t *)(TIM2_BASE + 0x14UL)) /* 事件生成寄存器（UG） */
+#define TIM2_PSC            (*(volatile uint32_t *)(TIM2_BASE + 0x28UL)) /* 预分频寄存器 */
+#define TIM2_ARR            (*(volatile uint32_t *)(TIM2_BASE + 0x2CUL)) /* 自动重装寄存器 */
+
+#define TIM_CR1_CEN_BIT     (1U << 0) /* 计数器使能 */
+#define TIM_DIER_UIE_BIT    (1U << 0) /* 更新中断使能 */
+#define TIM_SR_UIF_BIT      (1U << 0) /* 更新中断标志 */
+#define TIM_EGR_UG_BIT      (1U << 0) /* 更新事件生成（强制装载预分频） */
+
+/* NVIC（嵌套向量中断控制器，Nested Vectored Interrupt Controller）：负责中断使能与中断分发 */
+#define NVIC_BASE           (0xE000E100UL) /* NVIC 基地址 */
+#define NVIC_ISER0          (*(volatile uint32_t *)(NVIC_BASE + 0x00UL)) /* 中断使能寄存器0（IRQ0~31） */
+#define NVIC_ISER1          (*(volatile uint32_t *)(NVIC_BASE + 0x04UL)) /* 中断使能寄存器1（IRQ32~63） */
+#define NVIC_TIM2_IRQ_BIT   (1U << 28)  /* TIM2 IRQn=28 -> ISER0 bit28 */
 #define NVIC_USART1_IRQ_BIT (1U << 5)   /* USART1 IRQn=37 -> ISER1 bit5 */
 
 
-/* SysTick */
-#define SYSTICK_BASE        (0xE000E010UL)
-#define SYST_CSR            (*(volatile uint32_t *)(SYSTICK_BASE + 0x00UL))
-#define SYST_RVR            (*(volatile uint32_t *)(SYSTICK_BASE + 0x04UL))
-#define SYST_CVR            (*(volatile uint32_t *)(SYSTICK_BASE + 0x08UL))
+/* SysTick（系统滴答定时器，System Tick Timer）：提供内核级周期中断与软件时基 */
+#define SYSTICK_BASE        (0xE000E010UL) /* SysTick 基地址 */
+#define SYST_CSR            (*(volatile uint32_t *)(SYSTICK_BASE + 0x00UL)) /* 控制与状态寄存器 */
+#define SYST_RVR            (*(volatile uint32_t *)(SYSTICK_BASE + 0x04UL)) /* 重装载值寄存器 */
+#define SYST_CVR            (*(volatile uint32_t *)(SYSTICK_BASE + 0x08UL)) /* 当前计数值寄存器 */
 
-#define SYSTICK_ENABLE_BIT  (1U << 0)
-#define SYSTICK_TICKINT_BIT (1U << 1)
-#define SYSTICK_CLKSRC_BIT  (1U << 2)
+#define SYSTICK_ENABLE_BIT  (1U << 0) /* 计数器使能 */
+#define SYSTICK_TICKINT_BIT (1U << 1) /* 计数到 0 触发中断使能 */
+#define SYSTICK_CLKSRC_BIT  (1U << 2) /* 时钟源选择：1=处理器时钟(HCLK) */
 
 #endif

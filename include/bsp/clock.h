@@ -1,13 +1,27 @@
 #ifndef BSP_CLOCK_H
 #define BSP_CLOCK_H
 
-/* 当前工程未做 PLL 升频，复位后 SYSCLK 为 HSI 8MHz */
-#define SYSCLK_HZ (8000000UL)
+#include <stdint.h>
 
-/* 默认 CFGR 下 APB1 未分频时与 HCLK 相同；I2C CR2 FREQ / CCR 按此计算 */
-#define BSP_PCLK1_HZ SYSCLK_HZ
+#include "common/stm_status.h"
 
-/* SysTick 1ms 重装载值（向下计数，LOAD = 周期 tick 数 − 1） */
-#define BSP_SYSTICK_RELOAD_1MS ((SYSCLK_HZ / 1000UL) - 1UL)
+typedef enum {
+  BSP_CLOCK_PROFILE_HSI_8MHZ = 0,
+  BSP_CLOCK_PROFILE_HSE_PLL_72MHZ = 1
+} bsp_clock_profile_t;
+
+/* 配置系统时钟方案（当前支持 HSI 8MHz / HSE+PLL 72MHz）。 */
+stm_status_t bsp_clock_apply_profile(bsp_clock_profile_t profile);
+
+/* 运行时查询时钟频率，避免业务层依赖 RCC 细节。 */
+uint32_t bsp_clock_get_sysclk_hz(void);
+uint32_t bsp_clock_get_hclk_hz(void);
+uint32_t bsp_clock_get_pclk1_hz(void);
+uint32_t bsp_clock_get_pclk2_hz(void);
+
+#define SYSCLK_HZ (bsp_clock_get_sysclk_hz())
+#define BSP_PCLK1_HZ (bsp_clock_get_pclk1_hz())
+#define BSP_PCLK2_HZ (bsp_clock_get_pclk2_hz())
+#define BSP_SYSTICK_RELOAD_1MS ((bsp_clock_get_hclk_hz() / 1000UL) - 1UL)
 
 #endif
