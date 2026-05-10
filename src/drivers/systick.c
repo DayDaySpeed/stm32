@@ -3,7 +3,7 @@
 #include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
 
-static volatile uint32_t g_ms_ticks = 0;
+static volatile uint32_t g_ms_ticks = 0U;
 
 void systick_on_interrupt(void) { g_ms_ticks++; }
 

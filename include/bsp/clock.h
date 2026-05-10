@@ -19,9 +19,7 @@ uint32_t bsp_clock_get_hclk_hz(void);
 uint32_t bsp_clock_get_pclk1_hz(void);
 uint32_t bsp_clock_get_pclk2_hz(void);
 
-#define SYSCLK_HZ (bsp_clock_get_sysclk_hz())
-#define BSP_PCLK1_HZ (bsp_clock_get_pclk1_hz())
-#define BSP_PCLK2_HZ (bsp_clock_get_pclk2_hz())
+/* SysTick 1ms 中断的 RVR 重装载值：HCLK 计数到 0 时触发，故为 (HCLK/1000)-1。 */
 #define BSP_SYSTICK_RELOAD_1MS ((bsp_clock_get_hclk_hz() / 1000UL) - 1UL)
 
 #endif

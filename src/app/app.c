@@ -32,31 +32,31 @@
 static void app_breath_led_poll(void) {
   /* static 局部变量：函数返回后值不丢，下次调用接着用。
    * 这是 C 里实现“函数自己的私有状态”的标准做法，比全局变量更内聚。 */
-  static uint32_t s_next_ms;     /* 上次推进 phase 的时间戳（ms） */
-  static uint8_t  s_time_inited; /* 0 = 还没首次校准 s_next_ms */
-  static uint16_t s_phase;       /* 当前相位 0..399，驱动三角波 */
+  static uint32_t s_last_step_ms;  /* 上一次推进 phase 的时间戳（ms） */
+  static uint8_t  s_time_inited;   /* 0 = 还没首次校准 s_last_step_ms */
+  static uint16_t s_phase;         /* 当前相位 0..399，驱动三角波 */
 
   uint32_t now = systick_get_ms();  /* 获取系统启动以来的毫秒数 */
 
-  /* ---------- 首次进入：把 s_next_ms 校准到当前时间 ----------
-   * 否则 s_next_ms 默认为 0，第一次跑 (now - 0) 远大于 12ms，
+  /* ---------- 首次进入：把 s_last_step_ms 校准到当前时间 ----------
+   * 否则 s_last_step_ms 默认为 0，第一次跑 (now - 0) 远大于 12ms，
    * 会立刻连续推进很多个 phase，亮度跳变。 */
   if (s_time_inited == 0U) {
     s_time_inited = 1U;
-    s_next_ms = now;
+    s_last_step_ms = now;
   }
 
   /* ---------- 节流：12ms 还没到就立刻返回 ----------
-   * 重点是 (uint32_t) 强转：让减法在无符号下进行，
+   * (uint32_t) 强转：让减法在无符号下进行，
    * 即便 systick 计数将来溢出回零（49.7 天后），
-   * (now - s_next_ms) 仍然能给出正确的“经过的毫秒数”。
+   * (now - s_last_step_ms) 仍然能给出正确的“经过的毫秒数”。
    *
-   * 例：now=10, s_next_ms=4_294_967_290（接近 uint32 最大）
-   *     now - s_next_ms = 16（自动回绕，正确）。 */
-  if ((uint32_t)(now - s_next_ms) < APP_BREATH_STEP_MS) {
+   * 例：now=10, s_last_step_ms=4_294_967_290（接近 uint32 最大）
+   *     now - s_last_step_ms = 16（自动回绕，正确）。 */
+  if ((uint32_t)(now - s_last_step_ms) < APP_BREATH_STEP_MS) {
     return;
   }
-  s_next_ms = now;  /* 时间点已到，记下本次时间，等下一个 12ms */
+  s_last_step_ms = now;  /* 时间点已到，记下本次时间，等下一个 12ms */
 
   /* ---------- 推进相位 phase = (phase + 1) % 400 ---------- */
   s_phase = (uint16_t)(s_phase + 1U);
@@ -77,13 +77,12 @@ static void app_breath_led_poll(void) {
     0 ______/      \______*/
   uint16_t duty = (uint16_t)(((uint32_t)tri * 1000U) / 200U);
 
-
   (void)tim2_ch1_pwm_set_duty_permille(duty);
 }
 
 void app_init(void) {
   systick_init_1ms();
-  if (usart1_init(115200UL, USART_OVERSAMPLING_16) == 0U) {
+  if (usart1_init(115200UL, USART_OVERSAMPLING_16) != STM_OK) {
     while (1) {
     }
   }
@@ -107,21 +106,37 @@ void app_init(void) {
   usart1_send_string("Type a line, press Enter to flush to OLED.\r\n");
 }
 
-static uint8_t page_count = 0U;
+/* SSD1306 屏幕共 8 个 page（0..7），每行 8 像素高。 */
+#define APP_OLED_PAGE_COUNT     (8U)
 
 void app_run_forever(void) {
   char line[64];
+  /* 当前要写入的 page 行；每收到一行串口输入就写一行并 ++。
+   * static 局部：作用域限定在本函数内，比文件级全局变量更内聚。 */
+  static uint8_t s_page_count = 0U;
 
   while (1) {
+    /* 每轮主循环都跑：内部自带节流，不会真的每次都写 PWM 寄存器。 */
     app_breath_led_poll();
-    ssd1306_oled_write_text_atf(page_count, 0U, "line=%s --- page=%u", "hello", page_count);
+
+    /* 仅当串口收到完整一行才更新 OLED。
+     * 关键修复：之前在循环里每轮都重绘 OLED，导致 I2C 总线 100% 占用，
+     * 既拖慢主循环（呼吸灯肉眼可见卡顿），又无意义地刷写相同内容。 */
     if (usart1_try_read_string(line, (uint16_t)sizeof(line)) != 0U) {
       usart1_send_string("recv: ");
       usart1_send_string(line);
       usart1_send_string("\r\n");
 
-      ssd1306_oled_write_text_atf(page_count, 0U, "line=%s --- page=%u", line, page_count);
-      ++page_count;
+      /* 8 行写满后，清屏再从第 0 行开始；
+       * 否则 page_count 越界，ssd1306_write_text_at 会静默失败。 */
+      if (s_page_count >= APP_OLED_PAGE_COUNT) {
+        ssd1306_oled_clear();
+        s_page_count = 0U;
+      }
+
+      ssd1306_oled_write_text_atf(s_page_count, 0U,
+                                  "line=%s --- page=%u", line, s_page_count);
+      ++s_page_count;
     }
   }
 }

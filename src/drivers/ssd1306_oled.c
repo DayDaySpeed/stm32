@@ -1,12 +1,13 @@
 #include "drivers/ssd1306_oled.h"
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <string.h>
+
 #include "bsp/clock.h"
 #include "common/stm_macros.h"
+#include "common/stm_status.h"
 #include "hal/i2c1_master.h"
-#include "stm_status.h"
-
-#include <stdarg.h>
-#include <string.h>
 
 #define SSD1306_WIDTH 128U
 #define SSD1306_PAGE_COUNT 8U
@@ -36,7 +37,7 @@ static ssd1306_t g_default_dev = {
 
 static stm_status_t ssd1306_send_commands(ssd1306_t *dev, const uint8_t *cmds,
                                           size_t n) {
-  if ((dev == 0) || (dev->bus_write == 0)) {
+  if ((dev == NULL) || (dev->bus_write == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   if (n == 0U) {
@@ -47,7 +48,7 @@ static stm_status_t ssd1306_send_commands(ssd1306_t *dev, const uint8_t *cmds,
 
 static stm_status_t ssd1306_push_gddram(ssd1306_t *dev, const uint8_t *data,
                                         size_t len) {
-  if ((dev == 0) || (dev->bus_write == 0)) {
+  if ((dev == NULL) || (dev->bus_write == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   return dev->bus_write(dev->addr7, 0x40U, data, len);
@@ -56,7 +57,7 @@ static stm_status_t ssd1306_push_gddram(ssd1306_t *dev, const uint8_t *data,
 static stm_status_t ssd1306_flush_region(ssd1306_t *dev, uint16_t col0,
                                          uint16_t page, uint16_t ncol) {
   uint8_t setwin[6];
-  if ((dev == 0) || (dev->framebuffer == 0)) {
+  if ((dev == NULL) || (dev->framebuffer == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   if ((ncol == 0U) || (page >= dev->page_count) || (col0 >= dev->width)) {
@@ -84,7 +85,7 @@ static stm_status_t ssd1306_flush_region(ssd1306_t *dev, uint16_t col0,
 static uint8_t ssd1306_scroll_up_one_page(ssd1306_t *dev) {
   uint32_t width = 0U;
   uint32_t size = 0U;
-  if ((dev == 0) || (dev->framebuffer == 0)) {
+  if ((dev == NULL) || (dev->framebuffer == NULL)) {
     return 0U;
   }
   width = dev->width;
@@ -99,7 +100,7 @@ static uint8_t ssd1306_scroll_up_one_page(ssd1306_t *dev) {
 
 static uint8_t ssd1306_ensure_row_visible(ssd1306_t *dev) {
   uint8_t scrolled = 0U;
-  while ((dev != 0) && (dev->row_page >= dev->page_count)) {
+  while ((dev != NULL) && (dev->row_page >= dev->page_count)) {
     scrolled |= ssd1306_scroll_up_one_page(dev);
   }
   return scrolled;
@@ -115,7 +116,7 @@ static uint32_t ssd1306_append_char(char *dst, uint32_t idx, uint32_t cap,
 
 static uint32_t ssd1306_append_str(char *dst, uint32_t idx, uint32_t cap,
                                    const char *s) {
-  if (s == 0) {
+  if (s == NULL) {
     return idx;
   }
   while (*s != '\0') {
@@ -170,7 +171,7 @@ static uint32_t ssd1306_vformat(char *dst, uint32_t cap, const char *fmt,
   uint32_t idx = 0U;
   char spec = '\0';
 
-  if ((dst == 0) || (cap == 0U) || (fmt == 0)) {
+  if ((dst == NULL) || (cap == 0U) || (fmt == NULL)) {
     return 0U;
   }
 
@@ -231,13 +232,13 @@ stm_status_t ssd1306_init(ssd1306_t *dev) {
   };
   i2c1_master_config_t i2c_cfg;
 
-  if ((dev == 0) || (dev->bus_write == 0) || (dev->framebuffer == 0) ||
-      (dev->width != SSD1306_WIDTH) ||
+  if ((dev == NULL) || (dev->bus_write == NULL) ||
+      (dev->framebuffer == NULL) || (dev->width != SSD1306_WIDTH) ||
       (dev->page_count != SSD1306_PAGE_COUNT)) {
     return STM_ERR_INVALID_ARG;
   }
 
-  i2c_cfg.pclk_hz = BSP_PCLK1_HZ;
+  i2c_cfg.pclk_hz = bsp_clock_get_pclk1_hz();
   i2c_cfg.bus_hz = 100000UL;
   i2c_cfg.timeout_iter = 100000UL;
 
@@ -258,7 +259,7 @@ stm_status_t ssd1306_init(ssd1306_t *dev) {
 }
 
 stm_status_t ssd1306_clear(ssd1306_t *dev) {
-  if ((dev == 0) || (dev->framebuffer == 0)) {
+  if ((dev == NULL) || (dev->framebuffer == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   (void)memset(dev->framebuffer, 0, SSD1306_FB_SIZE);
@@ -268,7 +269,7 @@ stm_status_t ssd1306_clear(ssd1306_t *dev) {
 }
 
 stm_status_t ssd1306_cursor_home(ssd1306_t *dev) {
-  if (dev == 0) {
+  if (dev == NULL) {
     return STM_ERR_INVALID_ARG;
   }
   dev->col_px = 0U;
@@ -282,7 +283,8 @@ stm_status_t ssd1306_putc(ssd1306_t *dev, uint8_t c) {
   uint16_t row_page = 0U;
   uint16_t base = 0U;
 
-  if ((dev == 0) || (dev->framebuffer == 0) || (dev->initialized == 0U)) {
+  if ((dev == NULL) || (dev->framebuffer == NULL) ||
+      (dev->initialized == 0U)) {
     return STM_ERR_INVALID_ARG;
   }
 
@@ -325,7 +327,8 @@ stm_status_t ssd1306_flush(ssd1306_t *dev) {
   static const uint8_t setwin[] = {0x21U, 0x00U, 0x7FU, 0x22U, 0x00U, 0x07U};
   stm_status_t st = STM_OK;
 
-  if ((dev == 0) || (dev->framebuffer == 0) || (dev->initialized == 0U)) {
+  if ((dev == NULL) || (dev->framebuffer == NULL) ||
+      (dev->initialized == 0U)) {
     return STM_ERR_INVALID_ARG;
   }
 
@@ -338,7 +341,7 @@ stm_status_t ssd1306_flush(ssd1306_t *dev) {
 
 stm_status_t ssd1306_write_text(ssd1306_t *dev, const char *text) {
   stm_status_t st = STM_OK;
-  if ((dev == 0) || (text == 0)) {
+  if ((dev == NULL) || (text == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   while (*text != '\0') {
@@ -351,14 +354,12 @@ stm_status_t ssd1306_write_text(ssd1306_t *dev, const char *text) {
   return STM_OK;
 }
 
-
-
 stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
                                    uint16_t col_px, const char *text) {
   uint8_t scrolled = 0U;
   stm_status_t st = STM_OK;
 
-  if ((dev == 0) || (text == 0)) {
+  if ((dev == NULL) || (text == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   if (col_px >= dev->width) {
@@ -389,7 +390,7 @@ stm_status_t ssd1306_write_text_atf(ssd1306_t *dev, uint16_t page,
   va_list ap;
   uint32_t n = 0U;
 
-  if ((dev == 0) || (fmt == 0)) {
+  if ((dev == NULL) || (fmt == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
 
@@ -416,7 +417,6 @@ void ssd1306_oled_putc(uint8_t c) { (void)ssd1306_putc(&g_default_dev, c); }
 
 void ssd1306_oled_refresh(void) { (void)ssd1306_flush(&g_default_dev); }
 
-
 void ssd1306_oled_write_text_at(uint8_t page, uint8_t col_px,
                                 const char *text) {
   (void)ssd1306_write_text_at(&g_default_dev, (uint16_t)page, (uint16_t)col_px,
@@ -429,7 +429,7 @@ void ssd1306_oled_write_text_atf(uint8_t page, uint8_t col_px, const char *fmt,
   va_list ap;
   uint32_t n = 0U;
 
-  if (fmt == 0) {
+  if (fmt == NULL) {
     return;
   }
 

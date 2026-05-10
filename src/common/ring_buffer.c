@@ -1,5 +1,7 @@
 #include "common/ring_buffer.h"
 
+#include <stddef.h>
+
 static uint16_t ring_buffer_next(const ring_buffer_t *rb, uint16_t idx) {
   uint16_t next = (uint16_t)(idx + 1U);
   if (next >= rb->capacity) {
@@ -10,7 +12,7 @@ static uint16_t ring_buffer_next(const ring_buffer_t *rb, uint16_t idx) {
 
 stm_status_t ring_buffer_init(ring_buffer_t *rb, uint8_t *backing,
                               uint16_t capacity) {
-  if ((rb == 0) || (backing == 0) || (capacity < 2U)) {
+  if ((rb == NULL) || (backing == NULL) || (capacity < 2U)) {
     return STM_ERR_INVALID_ARG;
   }
   rb->data = backing;
@@ -22,7 +24,7 @@ stm_status_t ring_buffer_init(ring_buffer_t *rb, uint8_t *backing,
 
 stm_status_t ring_buffer_push_byte(ring_buffer_t *rb, uint8_t value) {
   uint16_t next = 0U;
-  if (rb == 0) {
+  if (rb == NULL) {
     return STM_ERR_INVALID_ARG;
   }
   next = ring_buffer_next(rb, rb->head);
@@ -35,7 +37,7 @@ stm_status_t ring_buffer_push_byte(ring_buffer_t *rb, uint8_t value) {
 }
 
 stm_status_t ring_buffer_pop_byte(ring_buffer_t *rb, uint8_t *out) {
-  if ((rb == 0) || (out == 0)) {
+  if ((rb == NULL) || (out == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
   if (rb->head == rb->tail) {
@@ -47,7 +49,7 @@ stm_status_t ring_buffer_pop_byte(ring_buffer_t *rb, uint8_t *out) {
 }
 
 uint16_t ring_buffer_count(const ring_buffer_t *rb) {
-  if (rb == 0) {
+  if (rb == NULL) {
     return 0U;
   }
   if (rb->head >= rb->tail) {

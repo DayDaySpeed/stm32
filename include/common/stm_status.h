@@ -1,8 +1,6 @@
 #ifndef COMMON_STM_STATUS_H
 #define COMMON_STM_STATUS_H
 
-#include <stdint.h>
-
 /*
  * 通用驱动状态码
  *

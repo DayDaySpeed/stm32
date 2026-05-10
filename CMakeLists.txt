@@ -105,22 +105,12 @@ add_custom_target(flash
 
 find_program(CLANG_FORMAT_EXE clang-format)
 if(CLANG_FORMAT_EXE)
+  file(GLOB_RECURSE FORMAT_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/*.c
+    ${CMAKE_SOURCE_DIR}/include/*.h
+  )
   add_custom_target(format
-    COMMAND ${CLANG_FORMAT_EXE} -i
-            ${CMAKE_SOURCE_DIR}/src/main.c
-            ${CMAKE_SOURCE_DIR}/src/app/app.c
-            ${CMAKE_SOURCE_DIR}/src/bsp/board_init.c
-            ${CMAKE_SOURCE_DIR}/src/common/ring_buffer.c
-            ${CMAKE_SOURCE_DIR}/src/hal/i2c1_master.c
-            ${CMAKE_SOURCE_DIR}/src/drivers/usart1.c
-            ${CMAKE_SOURCE_DIR}/src/drivers/ssd1306_oled.c
-            ${CMAKE_SOURCE_DIR}/src/drivers/systick.c
-            ${CMAKE_SOURCE_DIR}/include/common/stm_status.h
-            ${CMAKE_SOURCE_DIR}/include/common/stm_macros.h
-            ${CMAKE_SOURCE_DIR}/include/common/ring_buffer.h
-            ${CMAKE_SOURCE_DIR}/include/hal/i2c1_master.h
-            ${CMAKE_SOURCE_DIR}/include/drivers/usart1.h
-            ${CMAKE_SOURCE_DIR}/include/drivers/ssd1306_oled.h
+    COMMAND ${CLANG_FORMAT_EXE} -i ${FORMAT_SOURCES}
     COMMENT "Format source files with clang-format"
   )
 else()

@@ -3,27 +3,33 @@
 
 #include "bsp/stm32f103_regs.h"
 
-/* GPIOA_CRL 中每个引脚占 4 bit：低 2 位 MODE，高 2 位 CNF */
+/*
+ * GPIO 配置寄存器中每个引脚占 4 bit：低 2 位 MODE，高 2 位 CNF。
+ * 不同引脚通过位偏移定位：CRL 管理 PA0..PA7，CRH 管理 PA8..PA15。
+ */
 #define BOARD_GPIO_CRL_PIN_FIELD_MASK   (0xFU)
+#define BOARD_GPIO_CRH_PIN_FIELD_MASK   (0xFU)
 
-/* PA0 = TIM2_CH1（复用推挽输出1011） */
+/* PA0 = TIM2_CH1（复用推挽输出 50MHz，CNF=10、MODE=11 -> 0xB） */
 #define BOARD_GPIO_PA0_CRL_POS          (0U)
 #define BOARD_GPIO_PA0_CRL_MASK         (BOARD_GPIO_CRL_PIN_FIELD_MASK << BOARD_GPIO_PA0_CRL_POS)
 #define BOARD_GPIO_PA0_AF_PP_50MHZ      (0xBU << BOARD_GPIO_PA0_CRL_POS)
 
-/* GPIOA_CRH 中每个引脚占 4 bit：CNF[1:0] + MODE[1:0] */
-#define BOARD_GPIO_CRH_PIN_FIELD_MASK   (0xFU)
-
-/* PA9 = USART1_TX */
+/* PA9 = USART1_TX（复用推挽输出 50MHz） */
 #define BOARD_GPIO_PA9_CRH_POS          (4U)
 #define BOARD_GPIO_PA9_CRH_MASK         (BOARD_GPIO_CRH_PIN_FIELD_MASK << BOARD_GPIO_PA9_CRH_POS)
 #define BOARD_GPIO_PA9_AF_PP_50MHZ      (0xBU << BOARD_GPIO_PA9_CRH_POS)
 
-/* PA10 = USART1_RX */
+/* PA10 = USART1_RX（浮空输入，CNF=01、MODE=00 -> 0x4） */
 #define BOARD_GPIO_PA10_CRH_POS         (8U)
 #define BOARD_GPIO_PA10_CRH_MASK        (BOARD_GPIO_CRH_PIN_FIELD_MASK << BOARD_GPIO_PA10_CRH_POS)
 #define BOARD_GPIO_PA10_INPUT_FLOATING  (0x4U << BOARD_GPIO_PA10_CRH_POS)
 
 #define BOARD_USART1_GPIO_CRH_REG       GPIOA_CRH
+
+/* PB8/PB9 = I2C1_SCL/I2C1_SDA（重映射后；复用开漏输出 50MHz，CNF=11、MODE=11 -> 0xF）。
+ * PB8 占 CRH[3:0]，PB9 占 CRH[7:4]，所以两个引脚组合掩码是 0x000000FF。 */
+#define BOARD_GPIO_PB8_PB9_CRH_MASK     (0x000000FFUL)
+#define BOARD_GPIO_PB8_PB9_AF_OD_50MHZ  (0x000000FFUL)
 
 #endif

@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "common/stm_status.h"
+
 /* 须先调用 bsp_board_init()，否则 GPIOA/USART1 时钟未开。 */
 
 typedef enum {
@@ -17,14 +19,17 @@ typedef enum {
   USART1_LINE_CRLF = 3
 } usart1_line_policy_t;
 
-uint8_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling);
+stm_status_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling);
 void usart1_enable_rx_interrupt(void);
 void usart1_irq_handler(void);
 void usart1_send_byte(uint8_t data);
 void usart1_send_string(const char *str);
+
+/* try_* 系列：非阻塞读，按是否有数据返回 1/0。 */
 uint8_t usart1_try_read_byte(uint8_t *out);
-void usart1_set_line_policy(usart1_line_policy_t policy);
-/* 非阻塞读取一行：满足策略的行结束符后返回 1，并写入以 '\0' 结尾字符串。 */
+/* 满足策略的行结束符后返回 1，并写入以 '\0' 结尾字符串。 */
 uint8_t usart1_try_read_string(char *out, uint16_t out_size);
+
+void usart1_set_line_policy(usart1_line_policy_t policy);
 
 #endif

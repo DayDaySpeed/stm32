@@ -13,7 +13,7 @@ TOOLCHAIN_FILE="${TOOLCHAIN_FILE:-cmake/arm-gcc-toolchain.cmake}"
 ONLY_MINICOM=0
 # 编译+烧录（默认 1；--minicom-only 时置 0）
 DO_BUILD_FLASH=1
-# 烧录成功后是否再打开 minicom（-m / --monitor）
+# 烧录成功后是否再打开 minicom（-m / --minicom）
 OPEN_MINICOM_AFTER=0
 SKIP_FLASH=0
 
@@ -23,7 +23,7 @@ usage() {
   echo "选项:"
   echo "  -d, --device <dev>    串口设备 (默认: /dev/ttyUSB0)"
   echo "  -b, --baud <rate>     串口波特率 (默认: 115200)"
-  echo "  -m, --monitor         编译、烧录成功后打开 minicom"
+  echo "  -m, --minicom         编译、烧录成功后打开 minicom"
   echo "      --flash-only      只编译并烧录（不打开串口；与默认相同）"
   echo "      --minicom-only    只打开串口（不编译、不烧录）"
   echo "      --no-flash        只编译，不烧录"
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
       BAUD="$2"
       shift 2
       ;;
-    -m|--monitor)
+    -m|--minicom)
       OPEN_MINICOM_AFTER=1
       ONLY_MINICOM=0
       DO_BUILD_FLASH=1

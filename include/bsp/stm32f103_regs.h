@@ -47,10 +47,11 @@
 #define RCC_CFGR_PLLMUL9    (7U << 18)  /* PLL 倍频 x9（8MHz->72MHz） */
 
 /* FLASH（闪存接口，Flash memory interface）：负责程序 Flash 访问控制，如等待周期与预取缓冲 */
-#define FLASH_BASE          (0x40022000UL) /* Flash 控制器基地址 */
-#define FLASH_ACR           (*(volatile uint32_t *)(FLASH_BASE + 0x00UL)) /* Flash 访问控制寄存器（等待周期/预取） */
-#define FLASH_ACR_LATENCY_2 (2U << 0)  /* Flash 等待周期 2（72MHz 常用） */
-#define FLASH_ACR_PRFTBE_BIT (1U << 4) /* 预取缓冲使能 */
+#define FLASH_BASE             (0x40022000UL) /* Flash 控制器基地址 */
+#define FLASH_ACR              (*(volatile uint32_t *)(FLASH_BASE + 0x00UL)) /* Flash 访问控制寄存器（等待周期/预取） */
+#define FLASH_ACR_LATENCY_MASK (7U << 0)  /* Flash 等待周期字段掩码（LATENCY[2:0]） */
+#define FLASH_ACR_LATENCY_2    (2U << 0)  /* Flash 等待周期 2（72MHz 常用） */
+#define FLASH_ACR_PRFTBE_BIT   (1U << 4)  /* 预取缓冲使能 */
 
 /* AFIO（复用功能 I/O，Alternate Function I/O）：负责外设引脚重映射与复用功能路由 */
 #define AFIO_BASE           (0x40010000UL) /* AFIO 基地址 */
@@ -129,9 +130,11 @@
 #define TIM_DIER_UIE_BIT    (1U << 0) /* 更新中断使能 */
 #define TIM_SR_UIF_BIT      (1U << 0) /* 更新中断标志 */
 #define TIM_EGR_UG_BIT      (1U << 0) /* 更新事件生成（强制装载预分频） */
+#define TIM_CCMR1_CC1S_MASK (3U << 0) /* CC1S：通道 1 方向选择（00=输出，其余=输入） */
+#define TIM_CCMR1_CC1S_OUT  (0U << 0) /* CC1 = 输出模式 */
+#define TIM_CCMR1_OC1PE_BIT (1U << 3) /* OC1 预装载使能 */
 #define TIM_CCMR1_OC1M_MASK (7U << 4) /* OC1M：输出比较 1 模式 */
 #define TIM_CCMR1_OC1M_PWM1 (6U << 4) /* PWM 模式 1（边沿对齐，CNT<CCR 时有效电平） */
-#define TIM_CCMR1_OC1PE_BIT (1U << 3) /* OC1 预装载使能 */
 #define TIM_CCER_CC1E_BIT   (1U << 0) /* 捕获/比较 1 输出使能 */
 #define TIM_CCER_CC1P_BIT   (1U << 1) /* 捕获/比较 1 输出极性 */
 
