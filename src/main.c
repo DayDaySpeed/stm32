@@ -2,14 +2,11 @@
 #include "bsp/board_init.h"
 #include "bsp/clock.h"
 #include "drivers/systick.h"
-#include "drivers/tim2.h"
 #include "drivers/usart1.h"
 
 void SysTick_Handler(void) { systick_on_interrupt(); }
 
 void USART1_IRQHandler(void) { usart1_irq_handler(); }
-
-void TIM2_IRQHandler(void) { tim2_irq_handler(); }
 
 int main(void) {
   /* 可切换时钟方案：HSI 8MHz / HSE+PLL 72MHz */

@@ -3,6 +3,14 @@
 
 #include "bsp/stm32f103_regs.h"
 
+/* GPIOA_CRL 中每个引脚占 4 bit：低 2 位 MODE，高 2 位 CNF */
+#define BOARD_GPIO_CRL_PIN_FIELD_MASK   (0xFU)
+
+/* PA0 = TIM2_CH1（复用推挽输出1011） */
+#define BOARD_GPIO_PA0_CRL_POS          (0U)
+#define BOARD_GPIO_PA0_CRL_MASK         (BOARD_GPIO_CRL_PIN_FIELD_MASK << BOARD_GPIO_PA0_CRL_POS)
+#define BOARD_GPIO_PA0_AF_PP_50MHZ      (0xBU << BOARD_GPIO_PA0_CRL_POS)
+
 /* GPIOA_CRH 中每个引脚占 4 bit：CNF[1:0] + MODE[1:0] */
 #define BOARD_GPIO_CRH_PIN_FIELD_MASK   (0xFU)
 

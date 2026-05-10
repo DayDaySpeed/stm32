@@ -59,6 +59,7 @@
 
 /* GPIOA（通用输入输出端口 A，General Purpose Input/Output Port A）：配置 A 口引脚模式并进行输入输出控制 */
 #define GPIOA_BASE          (0x40010800UL) /* GPIOA 基地址 */
+#define GPIOA_CRL           (*(volatile uint32_t *)(GPIOA_BASE + 0x00UL)) /* GPIOA 配置低寄存器（PA0~PA7） */
 #define GPIOA_CRH           (*(volatile uint32_t *)(GPIOA_BASE + 0x04UL)) /* GPIOA 配置高寄存器（PA8~PA15） */
 
 /* GPIOB（通用输入输出端口 B，General Purpose Input/Output Port B）：配置 B 口引脚模式并进行输入输出控制 */
@@ -116,13 +117,23 @@
 #define TIM2_DIER           (*(volatile uint32_t *)(TIM2_BASE + 0x0CUL)) /* DMA/中断使能寄存器 */
 #define TIM2_SR             (*(volatile uint32_t *)(TIM2_BASE + 0x10UL)) /* 状态寄存器（UIF 等） */
 #define TIM2_EGR            (*(volatile uint32_t *)(TIM2_BASE + 0x14UL)) /* 事件生成寄存器（UG） */
+#define TIM2_CCMR1          (*(volatile uint32_t *)(TIM2_BASE + 0x18UL)) /* 捕获/比较模式寄存器1（CH1/CH2） */
+#define TIM2_CCER           (*(volatile uint32_t *)(TIM2_BASE + 0x20UL)) /* 捕获/比较使能寄存器 */
+#define TIM2_CNT            (*(volatile uint32_t *)(TIM2_BASE + 0x24UL)) /* 计数器当前值 */
 #define TIM2_PSC            (*(volatile uint32_t *)(TIM2_BASE + 0x28UL)) /* 预分频寄存器 */
 #define TIM2_ARR            (*(volatile uint32_t *)(TIM2_BASE + 0x2CUL)) /* 自动重装寄存器 */
+#define TIM2_CCR1           (*(volatile uint32_t *)(TIM2_BASE + 0x34UL)) /* 捕获/比较寄存器1（CH1 脉宽/PWM 占空比） */
 
 #define TIM_CR1_CEN_BIT     (1U << 0) /* 计数器使能 */
+#define TIM_CR1_ARPE_BIT    (1U << 7) /* 自动重装预装载使能（影子寄存器） */
 #define TIM_DIER_UIE_BIT    (1U << 0) /* 更新中断使能 */
 #define TIM_SR_UIF_BIT      (1U << 0) /* 更新中断标志 */
 #define TIM_EGR_UG_BIT      (1U << 0) /* 更新事件生成（强制装载预分频） */
+#define TIM_CCMR1_OC1M_MASK (7U << 4) /* OC1M：输出比较 1 模式 */
+#define TIM_CCMR1_OC1M_PWM1 (6U << 4) /* PWM 模式 1（边沿对齐，CNT<CCR 时有效电平） */
+#define TIM_CCMR1_OC1PE_BIT (1U << 3) /* OC1 预装载使能 */
+#define TIM_CCER_CC1E_BIT   (1U << 0) /* 捕获/比较 1 输出使能 */
+#define TIM_CCER_CC1P_BIT   (1U << 1) /* 捕获/比较 1 输出极性 */
 
 /* NVIC（嵌套向量中断控制器，Nested Vectored Interrupt Controller）：负责中断使能与中断分发 */
 #define NVIC_BASE           (0xE000E100UL) /* NVIC 基地址 */

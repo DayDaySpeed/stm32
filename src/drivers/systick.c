@@ -18,3 +18,5 @@ void systick_delay_ms(uint32_t ms) {
   while ((g_ms_ticks - start) < ms) {
   }
 }
+
+uint32_t systick_get_ms(void) { return g_ms_ticks; }
