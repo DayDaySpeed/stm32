@@ -41,20 +41,56 @@ static stm_status_t i2c1_wait_not_busy(void) {
   return STM_ERR_BUSY;
 }
 
+/*
+ * 初始化 I2C1 主机。
+ *
+ * 完整流程：
+ *   [1] 校验入参（cfg 非空、PCLK1 ≥ 2MHz、目标总线频率 > 0）
+ *   [2] 计算 CR2.FREQ：以 MHz 为单位的 PCLK1 值（让 I2C 外设知道自己的输入时钟）
+ *   [3] 计算 CCR    ：标准模式下决定 SCL 的高/低电平时长
+ *   [4] 计算 TRISE  ：SDA/SCL 允许的最大上升时间（防止上拉电阻太弱时误采样）
+ *   [5] 设置轮询超时上限（用户可覆盖默认值）
+ *   [6] 重映射 + 配 GPIO：I2C1 SCL/SDA 接到 PB8/PB9，复用开漏 50MHz
+ *   [7] 关 PE → 写时序寄存器 → 开 PE（PE=1 时硬件不允许改时序参数）
+ */
 stm_status_t i2c1_master_init(const i2c1_master_config_t *cfg) {
   uint32_t freq_mhz = 0U;
   uint32_t ccr = 0U;
   uint32_t trise = 0U;
 
-  if ((cfg == NULL) || (cfg->pclk_hz < 2000000UL) || (cfg->bus_hz == 0U)) {
+  /* ---------- [1] 入参校验 ----------
+   * - cfg == NULL：调用方传错
+   * - pclk1_hz < 2MHz：STM32F1 I2C 标准模式硬性要求（手册规定 FREQ ≥ 2）
+   * - bus_hz == 0：除零保护（后面 CCR 计算会用到） */
+  if ((cfg == NULL) || (cfg->pclk1_hz < 2000000UL) || (cfg->bus_hz == 0U)) {
     return STM_ERR_INVALID_ARG;
   }
-  freq_mhz = cfg->pclk_hz / 1000000UL;
+
+  /* ---------- [2] 计算 CR2.FREQ（PCLK1 的 MHz 值）----------
+   * CR2.FREQ[5:0] 字段告诉 I2C 外设「我的输入时钟是多少 MHz」，
+   * 硬件内部据此推算 1μs 等基本时间单位。
+   *
+   * 取值范围：
+   *   - 字段宽度 6 bit，理论 0..63
+   *   - 实际硬件标准模式要求 ≥ 2，快速模式 ≥ 4
+   *   - F1 上 PCLK1 不会超过 36MHz，所以 freq_mhz ∈ [2, 36] 是常态 */
+  freq_mhz = cfg->pclk1_hz / 1000000UL;
   if ((freq_mhz == 0U) || (freq_mhz > 63U)) {
     return STM_ERR_INVALID_ARG;
   }
 
-  ccr = cfg->pclk_hz / (cfg->bus_hz * 2UL);
+  /* ---------- [3] 计算 CCR（SCL 周期）----------
+   * 标准模式（100kHz 及以下）公式：
+   *   T_high = T_low = CCR × T_pclk1
+   *   T_scl  = T_high + T_low = 2 × CCR × T_pclk1
+   *   => CCR = PCLK1 / (2 × bus_hz)
+   *
+   * 例：PCLK1=36MHz、bus_hz=100kHz → CCR = 36e6 / 200e3 = 180
+   *
+   * 边界：
+   *   - CCR=0 不合法，硬件直接忽略 → 钳到 1（极端情况，比如 PCLK1=2MHz、bus_hz=1MHz）
+   *   - CCR 字段 12 bit，最大 0xFFF（4095），超了说明总线频率配得太低 */
+  ccr = cfg->pclk1_hz / (cfg->bus_hz * 2UL);
   if (ccr == 0U) {
     ccr = 1U;
   }
@@ -62,21 +98,44 @@ stm_status_t i2c1_master_init(const i2c1_master_config_t *cfg) {
     return STM_ERR_INVALID_ARG;
   }
 
+  /* ---------- [4] 计算 TRISE（最大上升时间）----------
+   * I2C 协议规定 SCL/SDA 上升时间不能超过：
+   *   - 标准模式：1000ns
+   *   - 快速模式：300ns
+   *
+   * TRISE 字段填的是「以 PCLK1 周期为单位 + 1」：
+   *   TRISE = (max_rise_ns × PCLK1_hz / 1e9) + 1
+   *
+   * 标准模式 1μs 上升时间 → TRISE = freq_mhz + 1
+   *   例：PCLK1=36MHz → TRISE = 37
+   *
+   * 字段 6 bit，上限 0x3F=63，超了夹住即可（实际工程上不会超）。 */
   trise = freq_mhz + 1UL;
   if (trise > 0x3FUL) {
     trise = 0x3FUL;
   }
 
+  /* ---------- [5] 超时窗口 ----------
+   * 0 表示用默认值；非 0 直接采纳（慢设备如 EEPROM 写周期需要调大）。 */
   g_timeout_iter =
       (cfg->timeout_iter == 0U) ? I2C1_MASTER_DEFAULT_TIMEOUT_ITER
                                 : cfg->timeout_iter;
 
-  /* I2C1 重映射到 PB8(SCL)/PB9(SDA)，配置为复用开漏输出 50MHz。 */
+  /* ---------- [6] GPIO 配置 ----------
+   * I2C1 默认引脚是 PB6(SCL)/PB7(SDA)，重映射后挪到 PB8(SCL)/PB9(SDA)，
+   * 本板用的是重映射版本。复用开漏（AF_OD）+ 外部上拉电阻是 I2C 标准接法。 */
   AFIO_MAPR |= AFIO_MAPR_I2C1_REMAP_BIT;
   GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
               BOARD_GPIO_PB8_PB9_AF_OD_50MHZ;
 
-  /* 关闭外设再写时序参数；最后置位 PE 使能。 */
+  /* ---------- [7] 写时序寄存器并启动 ----------
+   * 顺序关键：
+   *   - 先 PE=0：CR1.PE=1 时硬件锁定 CCR/TRISE/FREQ，写入无效，必须先关
+   *   - 写 FREQ/TRISE/CCR 顺序无所谓，但都得在 PE=1 之前
+   *   - 最后 PE=1 启动外设
+   *
+   * 这里没用 |=，直接整写 CR1：清掉所有别的位（如可能残留的 START/STOP/ACK 配置），
+   * 保证从干净状态启动。 */
   I2C1_CR1 &= (uint32_t)~I2C_CR1_PE_BIT;
   I2C1_CR2 = freq_mhz & 0x3FUL;
   I2C1_TRISE = trise & 0x3FUL;

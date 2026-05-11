@@ -238,7 +238,7 @@ stm_status_t ssd1306_init(ssd1306_t *dev) {
     return STM_ERR_INVALID_ARG;
   }
 
-  i2c_cfg.pclk_hz = bsp_clock_get_pclk1_hz();
+  i2c_cfg.pclk1_hz = bsp_clock_get_pclk1_hz();
   i2c_cfg.bus_hz = 100000UL;
   i2c_cfg.timeout_iter = 100000UL;
 
