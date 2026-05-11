@@ -212,6 +212,7 @@ CH340 接线：
 - `src/hal/i2c1_master.c`：I2C1 主机事务层（轮询 + 超时 + NACK 收敛）
 - `src/drivers/usart1.c`：USART1 初始化、发送、RX 中断、行策略读取
 - `src/drivers/pwm.c`：TIM2_CH1 边沿对齐 PWM 输出（PA0），见 [pwm.md](./pwm.md)
+- `src/drivers/encoder.c`：TIM3 正交编码器输入（PA6/PA7），见 [encoder.md](./encoder.md)
 - `src/drivers/ssd1306_oled.c` / `oled_font5x7.c`：SSD1306 设备对象驱动、局部/全屏刷新与字库
 - `Document/ssd1306/`：SSD1306 英文数据手册等（可选，自管下载）
 - `include/bsp`：寄存器映射、`clock.h`、`board_pins.h`、`rcc_board.h`、`board_init.h`
@@ -395,6 +396,7 @@ CH340 wiring:
 - `src/drivers/systick.c`: SysTick 1 ms tick and delay
 - `src/drivers/usart1.c`: USART1 init, TX, RX IRQ and ring buffer
 - `src/drivers/pwm.c`: TIM2_CH1 edge-aligned PWM output on PA0; see [pwm.md](./pwm.md)
+- `src/drivers/encoder.c`: TIM3 quadrature encoder input on PA6/PA7; see [encoder.md](./encoder.md)
 - `src/drivers/ssd1306_oled.c`, `oled_font5x7.c`: SSD1306 hardware I2C1, partial/full refresh, font
 - `Document/ssd1306/`: optional SSD1306 datasheet PDFs
 - `include/bsp`: register map, `clock.h`, `board_pins.h`, `rcc_board.h`, `board_init.h`
