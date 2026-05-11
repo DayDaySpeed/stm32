@@ -11,6 +11,7 @@
 #define RCC_APB2ENR         (*(volatile uint32_t *)(RCC_BASE + 0x18UL)) /* APB2 外设时钟使能寄存器 */
 
 #define RCC_TIM2EN_BIT      (1U << 0)  /* TIM2 时钟使能（APB1ENR） */
+#define RCC_TIM3EN_BIT      (1U << 1)  /* TIM3 时钟使能（APB1ENR） */
 #define RCC_I2C1EN_BIT      (1U << 21) /* I2C1 时钟使能（APB1ENR） */
 
 #define RCC_AFIOEN_BIT      (1U << 0)  /* AFIO 时钟使能（APB2ENR） */
@@ -62,6 +63,8 @@
 #define GPIOA_BASE          (0x40010800UL) /* GPIOA 基地址 */
 #define GPIOA_CRL           (*(volatile uint32_t *)(GPIOA_BASE + 0x00UL)) /* GPIOA 配置低寄存器（PA0~PA7） */
 #define GPIOA_CRH           (*(volatile uint32_t *)(GPIOA_BASE + 0x04UL)) /* GPIOA 配置高寄存器（PA8~PA15） */
+#define GPIOA_IDR           (*(volatile uint32_t *)(GPIOA_BASE + 0x08UL)) /* GPIOA 输入数据寄存器 */
+#define GPIOA_ODR           (*(volatile uint32_t *)(GPIOA_BASE + 0x0CUL)) /* GPIOA 输出数据寄存器（输入模式下用于选上拉/下拉） */
 
 /* GPIOB（通用输入输出端口 B，General Purpose Input/Output Port B）：配置 B 口引脚模式并进行输入输出控制 */
 #define GPIOB_BASE          (0x40010C00UL) /* GPIOB 基地址 */
@@ -137,6 +140,44 @@
 #define TIM_CCMR1_OC1M_PWM1 (6U << 4) /* PWM 模式 1（边沿对齐，CNT<CCR 时有效电平） */
 #define TIM_CCER_CC1E_BIT   (1U << 0) /* 捕获/比较 1 输出使能 */
 #define TIM_CCER_CC1P_BIT   (1U << 1) /* 捕获/比较 1 输出极性 */
+#define TIM_CCER_CC2E_BIT   (1U << 4) /* 捕获/比较 2 使能 */
+#define TIM_CCER_CC2P_BIT   (1U << 5) /* 捕获/比较 2 输出/输入极性 */
+
+/* TIM3（通用定时器3）：本工程用于正交编码器模式（CH1/CH2 = TI1/TI2，PA6/PA7） */
+#define TIM3_BASE           (0x40000400UL)
+#define TIM3_CR1            (*(volatile uint32_t *)(TIM3_BASE + 0x00UL)) /* 控制寄存器1 */
+#define TIM3_SMCR           (*(volatile uint32_t *)(TIM3_BASE + 0x08UL)) /* 从模式控制寄存器（SMS 编码器模式） */
+#define TIM3_DIER           (*(volatile uint32_t *)(TIM3_BASE + 0x0CUL)) /* DMA/中断使能 */
+#define TIM3_SR             (*(volatile uint32_t *)(TIM3_BASE + 0x10UL)) /* 状态寄存器 */
+#define TIM3_EGR            (*(volatile uint32_t *)(TIM3_BASE + 0x14UL)) /* 事件生成 */
+#define TIM3_CCMR1          (*(volatile uint32_t *)(TIM3_BASE + 0x18UL)) /* CCMR1（CH1/CH2 输入/输出配置） */
+#define TIM3_CCER           (*(volatile uint32_t *)(TIM3_BASE + 0x20UL)) /* 捕获/比较使能（输入极性） */
+#define TIM3_CNT            (*(volatile uint32_t *)(TIM3_BASE + 0x24UL)) /* 计数器（编码器模式下记录脉冲计数） */
+#define TIM3_PSC            (*(volatile uint32_t *)(TIM3_BASE + 0x28UL)) /* 预分频（编码器模式必须=0） */
+#define TIM3_ARR            (*(volatile uint32_t *)(TIM3_BASE + 0x2CUL)) /* 自动重装（编码器溢出/下溢边界） */
+
+/* TIM 通用：CR1 方向位（编码器模式下只读，硬件按 A/B 相位关系自动写） */
+#define TIM_CR1_DIR_BIT     (1U << 4) /* 0=向上计数，1=向下计数 */
+
+/* TIM CCMR1 输入捕获字段（与 PWM 时的输出比较是同一个寄存器，但语义不同）。
+ * 编码器模式下：CC1S/CC2S = 01 把 CH1/CH2 配成输入，分别连到 TI1/TI2。 */
+#define TIM_CCMR1_CC1S_TI1  (1U << 0)   /* CC1 输入接到 TI1（编码器 A 相） */
+#define TIM_CCMR1_CC2S_MASK (3U << 8)   /* CC2S 字段掩码 */
+#define TIM_CCMR1_CC2S_TI2  (1U << 8)   /* CC2 输入接到 TI2（编码器 B 相） */
+#define TIM_CCMR1_IC1F_MASK (0xFU << 4) /* TI1 输入数字滤波字段 */
+#define TIM_CCMR1_IC2F_MASK (0xFU << 12)/* TI2 输入数字滤波字段 */
+/* 滤波档位 0xF：fSAMPLING = fDTS/32, N=8。在 fDTS=72MHz 时窗口约 3.5μs；
+ * 对干净的电机编码器毫无影响（脉冲周期 >> 3.5μs），但能把 EMI/接触毛刺挡掉。 */
+#define TIM_CCMR1_IC1F_MAX  (0xFU << 4)
+#define TIM_CCMR1_IC2F_MAX  (0xFU << 12)
+#define TIM_CCMR1_IC1PSC_MASK (3U << 2) /* TI1 输入预分频（编码器要清零） */
+#define TIM_CCMR1_IC2PSC_MASK (3U << 10)/* TI2 输入预分频 */
+
+/* TIM SMCR.SMS[2:0]：从模式选择，编码器模式在此选三选一 */
+#define TIM_SMCR_SMS_MASK   (7U << 0)
+#define TIM_SMCR_SMS_ENC1   (1U << 0)   /* 编码器模式1：仅 TI2 边沿计数（2x） */
+#define TIM_SMCR_SMS_ENC2   (2U << 0)   /* 编码器模式2：仅 TI1 边沿计数（2x） */
+#define TIM_SMCR_SMS_ENC3   (3U << 0)   /* 编码器模式3：TI1+TI2 双边沿计数（4x，分辨率最高） */
 
 /* NVIC（嵌套向量中断控制器，Nested Vectored Interrupt Controller）：负责中断使能与中断分发 */
 #define NVIC_BASE           (0xE000E100UL) /* NVIC 基地址 */

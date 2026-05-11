@@ -8,6 +8,7 @@ set(STM32_ELF_SOURCES
   src/hal/i2c1_master.c
   src/drivers/systick.c
   src/drivers/pwm.c
+  src/drivers/encoder.c
   src/drivers/usart1.c
   src/drivers/ssd1306_oled.c
   src/drivers/oled_font5x7.c

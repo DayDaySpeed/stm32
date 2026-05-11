@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "drivers/encoder.h"
 #include "drivers/pwm.h"
 #include "drivers/ssd1306_oled.h"
 #include "drivers/systick.h"
@@ -13,6 +14,8 @@
 #define APP_BREATH_STEP_MS      (12U)
 /* 相位 0..PHASE_MAX-1 走一个“先亮后暗”的三角周期；约 (STEP_MS * PHASE_MAX) ms 一整次呼吸。 */
 #define APP_BREATH_PHASE_MAX    (400U)
+/* OLED 调试信息刷新节流：太快会阻塞 CPU 拖慢呼吸；500ms 人眼也跟得上。 */
+#define APP_DEBUG_OLED_PERIOD_MS (500U)
 
 /*
  * 呼吸灯轮询函数（非阻塞）
@@ -78,6 +81,42 @@ static void app_breath_led_poll(void) {
   uint16_t duty = (uint16_t)(((uint32_t)tri * 1000U) / 200U);
 
   (void)tim2_ch1_pwm_set_duty_permille(duty);
+
+  /* ---------- OLED 调试输出（二级节流，500ms 一次）----------
+   * 每写一行 ssd1306_oled_write_text_atf 大概阻塞 10~25ms（每字符 ~1ms I2C）。
+   * 如果每 12ms phase 一推进就写 OLED，CPU 反而被 I2C 阻塞，phase 推进周期
+   * 被拉到 60ms+，呼吸圈从 4.8s 变 ~25s。所以独立节流到 500ms：
+   *   - 呼吸阻塞 overhead 从 ~80% 降到 ~5%
+   *   - OLED 每秒刷 2 次，看变化够用 */
+  static uint32_t s_last_oled_ms;
+  if ((uint32_t)(now - s_last_oled_ms) >= APP_DEBUG_OLED_PERIOD_MS) {
+    s_last_oled_ms = now;
+
+    /* 编码器观察：连续读两次 CNT 算 delta，等效「过去 500ms 的脉冲数」。
+     * 平衡车里这个就是「轮速反馈」，单位 = 编码线数 × 4（4x 分辨率）。
+     *
+     * 方向约定：传入 TIM3_ENCODER_DIR_NORMAL 时，编码器顺时针(向右)旋转 -> CNT 正向；
+     *          若实际跑出来方向反了，把 app_init 里 tim3_encoder_init 的入参换成
+     *          TIM3_ENCODER_DIR_INVERTED 即可（硬件层翻转，应用层无需改符号）。 */
+    static int16_t s_enc_prev;
+    int16_t enc_now = tim3_encoder_get_count();
+    int16_t enc_delta = (int16_t)(enc_now - s_enc_prev);
+    s_enc_prev = enc_now;
+
+    /* OLED 布局（128x64，每行 ~21 字符）：
+     *   page 0: 标题
+     *   page 1: 当前 CNT（重点，直观看「转了多少」）
+     *   page 2: 500ms 增量（直观看「转得多快、哪个方向」）
+     *   page 3: 当前方向（+ 表示正转，- 表示反转，0 表示当前停转）
+     *   page 5: 呼吸灯调试（次要）
+     * 行尾留空格覆盖上一次的残留字符。 */
+    char dir_sym = (enc_delta > 0) ? '+' : (enc_delta < 0) ? '-' : '0';
+    ssd1306_oled_write_text_atf(0U, 0U, "TIM3 ENC (PA6/7)   ");
+    ssd1306_oled_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
+    ssd1306_oled_write_text_atf(2U, 0U, "dlt = %d        ", enc_delta);
+    ssd1306_oled_write_text_atf(3U, 0U, "dir = %c          ", dir_sym);
+    ssd1306_oled_write_text_atf(5U, 0U, "phase=%u duty=%u  ", s_phase, duty);
+  }
 }
 
 void app_init(void) {
@@ -100,6 +139,14 @@ void app_init(void) {
     }
   }
 
+  /* 正交编码器：TIM3 编码器模式（PA6=A、PA7=B），硬件自动计数 + 测向。
+   * 第二个参数控制方向：默认 NORMAL（A 超前 B = CNT++）；
+   * 实测如果「向右转 CNT 反而减少」，改成 TIM3_ENCODER_DIR_INVERTED 即可。 */
+  if (tim3_encoder_init(TIM3_ENCODER_DIR_NORMAL) != STM_OK) {
+    while (1) {
+    }
+  }
+
   usart1_send_string("\r\nUSART1 ready (PA9/PA10,115200 8N1)\r\n");
   usart1_send_string("OLED ready (I2C1 remap PB8/PB9).\r\n");
   usart1_send_string("Breath LED: TIM2_CH1 PWM on PA0.\r\n");
@@ -116,12 +163,9 @@ void app_run_forever(void) {
   static uint8_t s_page_count = 0U;
 
   while (1) {
-    /* 每轮主循环都跑：内部自带节流，不会真的每次都写 PWM 寄存器。 */
+
     app_breath_led_poll();
 
-    /* 仅当串口收到完整一行才更新 OLED。
-     * 关键修复：之前在循环里每轮都重绘 OLED，导致 I2C 总线 100% 占用，
-     * 既拖慢主循环（呼吸灯肉眼可见卡顿），又无意义地刷写相同内容。 */
     if (usart1_try_read_string(line, (uint16_t)sizeof(line)) != 0U) {
       usart1_send_string("recv: ");
       usart1_send_string(line);
