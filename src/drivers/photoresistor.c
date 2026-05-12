@@ -269,6 +269,16 @@ static stm_status_t photoresistor_adc_calibrate(void) {
 }
 
 /*
+ * 每次转换前都把规则通道和采样时间切回光敏通道，
+ * 这样即使别的 ADC1 单次采样驱动临时改过 SQR/SMPR，本驱动也能读回正确引脚。
+ */
+static void photoresistor_prepare_conversion_channel(void) {
+  ADC1_SMPR2 = (ADC1_SMPR2 & ~PHOTO_SMPR2_CH1_MASK) | PHOTO_SMPR2_CH1_VALUE_MAX;
+  ADC1_SQR1 = 0U;
+  ADC1_SQR3 = (uint32_t)(PHOTO_ADC_CHANNEL & 0x1FU);
+}
+
+/*
  * 函数名：photoresistor_start_once_and_read
  * 参数：
  *   - out：输出参数，返回本次 12 位 ADC 原始值
@@ -280,6 +290,8 @@ static stm_status_t photoresistor_adc_calibrate(void) {
  *   - STM_ERR_TIMEOUT：等待 EOC 超时
  */
 static stm_status_t photoresistor_start_once_and_read(uint16_t *out) {
+  photoresistor_prepare_conversion_channel();
+
   /* 清掉上一次遗留的 EOC，确保下面等到的是“这一次转换完成”。 */
   ADC1_SR &= ~ADC_SR_EOC_BIT;
 
@@ -357,11 +369,7 @@ stm_status_t photoresistor_init_with_config(const photoresistor_config_t *config
    *   - 这是一种通用字段写法，后面如果不是写 111，而是写别的值，也同样成立；
    *   - 比“直接 OR 一个值进去”更稳，也更符合工程化代码风格。
    */
-  ADC1_SMPR2 = (ADC1_SMPR2 & ~PHOTO_SMPR2_CH1_MASK) | PHOTO_SMPR2_CH1_VALUE_MAX;
-
-  /* 6) 规则序列长度 L=0 → 1 次转换；SQ1 = 通道号 1（IN1） */
-  ADC1_SQR1 = 0U;
-  ADC1_SQR3 = (uint32_t)(PHOTO_ADC_CHANNEL & 0x1FU);
+  photoresistor_prepare_conversion_channel();
 
   {
     /* 7) 最后执行 ADC 校准。 */

@@ -14,6 +14,7 @@ set(STM32_ELF_SOURCES
   src/drivers/pwm.c
   src/drivers/encoder.c
   src/drivers/photoresistor.c
+  src/drivers/thermistor.c
   src/drivers/usart1.c
   src/drivers/ssd1306_oled.c
   src/drivers/oled_font5x7.c
