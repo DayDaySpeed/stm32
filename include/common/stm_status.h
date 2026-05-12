@@ -27,4 +27,7 @@ typedef enum {
   STM_ERR_NOT_INITIALIZED = 7,
 } stm_status_t;
 
+/* 状态码 -> 可读字符串，用于日志/故障打印。 */
+const char *stm_status_name(stm_status_t status);
+
 #endif

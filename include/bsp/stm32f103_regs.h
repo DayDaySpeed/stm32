@@ -19,6 +19,7 @@
 #define RCC_IOPBEN_BIT      (1U << 3)  /* GPIOB 时钟使能（APB2ENR） */
 #define RCC_IOPCEN_BIT      (1U << 4)  /* GPIOC 时钟使能（APB2ENR） */
 #define RCC_USART1EN_BIT    (1U << 14) /* USART1 时钟使能（APB2ENR） */
+#define RCC_ADC1EN_BIT      (1U << 9)  /* ADC1 时钟使能（APB2ENR） */
 
 #define RCC_CR_HSION_BIT    (1U << 0)  /* HSI 时钟开关 */
 #define RCC_CR_HSIRDY_BIT   (1U << 1)  /* HSI 就绪标志 */
@@ -46,6 +47,11 @@
 #define RCC_CFGR_PLLXTPRE_HSE_DIV1 (0U << 17) /* HSE 送 PLL 前不分频 */
 #define RCC_CFGR_PLLMUL_MASK (0xFU << 18) /* PLL 倍频字段掩码 */
 #define RCC_CFGR_PLLMUL9    (7U << 18)  /* PLL 倍频 x9（8MHz->72MHz） */
+#define RCC_CFGR_ADCPRE_MASK (3U << 14) /* ADC 预分频（PCLK2 分频后送 ADC） */
+#define RCC_CFGR_ADCPRE_DIV2 (0U << 14) /* ADCCLK = PCLK2/2 */
+#define RCC_CFGR_ADCPRE_DIV4 (1U << 14) /* ADCCLK = PCLK2/4 */
+#define RCC_CFGR_ADCPRE_DIV6 (2U << 14) /* ADCCLK = PCLK2/6（72MHz 时常用，约 12MHz） */
+#define RCC_CFGR_ADCPRE_DIV8 (3U << 14) /* ADCCLK = PCLK2/8 */
 
 /* FLASH（闪存接口，Flash memory interface）：负责程序 Flash 访问控制，如等待周期与预取缓冲 */
 #define FLASH_BASE             (0x40022000UL) /* Flash 控制器基地址 */
@@ -178,6 +184,26 @@
 #define TIM_SMCR_SMS_ENC1   (1U << 0)   /* 编码器模式1：仅 TI2 边沿计数（2x） */
 #define TIM_SMCR_SMS_ENC2   (2U << 0)   /* 编码器模式2：仅 TI1 边沿计数（2x） */
 #define TIM_SMCR_SMS_ENC3   (3U << 0)   /* 编码器模式3：TI1+TI2 双边沿计数（4x，分辨率最高） */
+
+/* ADC1（模数转换器1，Analog-to-Digital Converter 1）：规则组单次/连续转换，多通道采样时间可配 */
+#define ADC1_BASE           (0x40012400UL) /* ADC1 外设基地址 */
+#define ADC1_SR             (*(volatile uint32_t *)(ADC1_BASE + 0x00UL)) /* 状态寄存器（EOC 等） */
+#define ADC1_CR1            (*(volatile uint32_t *)(ADC1_BASE + 0x04UL)) /* 控制寄存器1（扫描/间断等） */
+#define ADC1_CR2            (*(volatile uint32_t *)(ADC1_BASE + 0x08UL)) /* 控制寄存器2（ADON/启动/校准） */
+#define ADC1_SMPR2          (*(volatile uint32_t *)(ADC1_BASE + 0x10UL)) /* 采样时间寄存器2（IN0~IN9） */
+#define ADC1_SQR1           (*(volatile uint32_t *)(ADC1_BASE + 0x2CUL)) /* 规则序列寄存器1（序列长度 L） */
+#define ADC1_SQR3           (*(volatile uint32_t *)(ADC1_BASE + 0x34UL)) /* 规则序列寄存器3（SQ1..SQ6） */
+#define ADC1_DR             (*(volatile uint32_t *)(ADC1_BASE + 0x4CUL)) /* 规则组数据寄存器（12 位右对齐） */
+
+#define ADC_SR_EOC_BIT      (1U << 1)   /* 规则组转换结束（读 DR 或写 SR 可清） */
+#define ADC_CR2_ADON_BIT    (1U << 0)   /* ADC 上电/使能 */
+#define ADC_CR2_CONT_BIT    (1U << 1)   /* 连续转换模式 */
+#define ADC_CR2_CAL_BIT     (1U << 2)   /* 启动校准（硬件完成后清零） */
+#define ADC_CR2_RSTCAL_BIT  (1U << 3)   /* 复位校准寄存器（硬件完成后清零） */
+#define ADC_CR2_EXTSEL_MASK (7U << 17)  /* 规则组外部触发源选择（EXTSEL[2:0]） */
+#define ADC_CR2_EXTSEL_SWSTART (7U << 17) /* 规则组触发源选择为 SWSTART */
+#define ADC_CR2_EXTTRIG_BIT (1U << 20)  /* 规则组外部触发允许；软件触发也需先放行 */
+#define ADC_CR2_SWSTART_BIT (1U << 22)  /* 软件启动规则组转换 */
 
 /* NVIC（嵌套向量中断控制器，Nested Vectored Interrupt Controller）：负责中断使能与中断分发 */
 #define NVIC_BASE           (0xE000E100UL) /* NVIC 基地址 */

@@ -12,10 +12,24 @@
 #include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* 一周期 tick 数 = ARR+1；为 0 表示未 init / 已 stop。 */
 static uint32_t g_ticks_per_period;
+
+static stm_status_t tim2_ch1_pwm_validate_duty(uint16_t duty_permille);
+
+static stm_status_t tim2_ch1_pwm_validate_config(
+    const tim2_ch1_pwm_config_t *config) {
+  if (config == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if (config->pwm_hz == 0U) {
+    return STM_ERR_INVALID_ARG;
+  }
+  return tim2_ch1_pwm_validate_duty(config->duty_permille);
+}
 
 static stm_status_t tim2_ch1_pwm_validate_duty(uint16_t duty_permille) {
   if (duty_permille > 1000U) {
@@ -135,7 +149,15 @@ static void tim2_ch1_pwm_apply_hw(uint16_t psc, uint16_t arr,
 
 stm_status_t tim2_ch1_pwm_init_hz(uint32_t pwm_frequency_hz,
                                   uint16_t duty_permille) {
-  stm_status_t st = tim2_ch1_pwm_validate_duty(duty_permille);
+  const tim2_ch1_pwm_config_t config = {
+      .pwm_hz = pwm_frequency_hz,
+      .duty_permille = duty_permille,
+  };
+  return tim2_ch1_pwm_init_with_config(&config);
+}
+
+stm_status_t tim2_ch1_pwm_init_with_config(const tim2_ch1_pwm_config_t *config) {
+  stm_status_t st = tim2_ch1_pwm_validate_config(config);
   if (st != STM_OK) {
     return st;
   }
@@ -144,13 +166,35 @@ stm_status_t tim2_ch1_pwm_init_hz(uint32_t pwm_frequency_hz,
   uint16_t psc = 0U;
   uint16_t arr = 0U;
 
-  st = tim2_ch1_pwm_resolve_timebase(tim_clk, pwm_frequency_hz, &psc, &arr);
+  st = tim2_ch1_pwm_resolve_timebase(tim_clk, config->pwm_hz, &psc, &arr);
   if (st != STM_OK) {
     return st;
   }
 
   tim2_ch1_pwm_gpio_pa0_init();
-  tim2_ch1_pwm_apply_hw(psc, arr, duty_permille);
+  tim2_ch1_pwm_apply_hw(psc, arr, config->duty_permille);
+  return STM_OK;
+}
+
+stm_status_t tim2_ch1_pwm_set_config(const tim2_ch1_pwm_config_t *config) {
+  stm_status_t st = tim2_ch1_pwm_validate_config(config);
+  if (st != STM_OK) {
+    return st;
+  }
+  if (g_ticks_per_period == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
+
+  uint32_t tim_clk = tim2_input_clock_hz();
+  uint16_t psc = 0U;
+  uint16_t arr = 0U;
+
+  st = tim2_ch1_pwm_resolve_timebase(tim_clk, config->pwm_hz, &psc, &arr);
+  if (st != STM_OK) {
+    return st;
+  }
+
+  tim2_ch1_pwm_apply_hw(psc, arr, config->duty_permille);
   return STM_OK;
 }
 
@@ -170,26 +214,19 @@ stm_status_t tim2_ch1_pwm_set_duty_permille(uint16_t duty_permille) {
 
 stm_status_t tim2_ch1_pwm_set_hz(uint32_t pwm_frequency_hz,
                                  uint16_t duty_permille) {
-  stm_status_t st = tim2_ch1_pwm_validate_duty(duty_permille);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  uint32_t tim_clk = tim2_input_clock_hz();
-  uint16_t psc = 0U;
-  uint16_t arr = 0U;
-
-  st = tim2_ch1_pwm_resolve_timebase(tim_clk, pwm_frequency_hz, &psc, &arr);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  tim2_ch1_pwm_apply_hw(psc, arr, duty_permille);
-  return STM_OK;
+  const tim2_ch1_pwm_config_t config = {
+      .pwm_hz = pwm_frequency_hz,
+      .duty_permille = duty_permille,
+  };
+  return tim2_ch1_pwm_set_config(&config);
 }
 
-void tim2_ch1_pwm_stop(void) {
+stm_status_t tim2_ch1_pwm_stop(void) {
+  if (g_ticks_per_period == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
   TIM2_CR1 &= ~TIM_CR1_CEN_BIT;
   TIM2_CCER &= ~TIM_CCER_CC1E_BIT;
   g_ticks_per_period = 0U;
+  return STM_OK;
 }

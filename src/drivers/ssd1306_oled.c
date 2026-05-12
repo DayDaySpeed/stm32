@@ -262,6 +262,9 @@ stm_status_t ssd1306_clear(ssd1306_t *dev) {
   if ((dev == NULL) || (dev->framebuffer == NULL)) {
     return STM_ERR_INVALID_ARG;
   }
+  if (dev->initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
   (void)memset(dev->framebuffer, 0, SSD1306_FB_SIZE);
   dev->col_px = 0U;
   dev->row_page = 0U;
@@ -271,6 +274,9 @@ stm_status_t ssd1306_clear(ssd1306_t *dev) {
 stm_status_t ssd1306_cursor_home(ssd1306_t *dev) {
   if (dev == NULL) {
     return STM_ERR_INVALID_ARG;
+  }
+  if (dev->initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
   }
   dev->col_px = 0U;
   dev->row_page = 0U;
@@ -285,7 +291,7 @@ stm_status_t ssd1306_putc(ssd1306_t *dev, uint8_t c) {
 
   if ((dev == NULL) || (dev->framebuffer == NULL) ||
       (dev->initialized == 0U)) {
-    return STM_ERR_INVALID_ARG;
+    return (dev == NULL) ? STM_ERR_INVALID_ARG : STM_ERR_NOT_INITIALIZED;
   }
 
   if (c == '\r') {
@@ -317,10 +323,19 @@ stm_status_t ssd1306_putc(ssd1306_t *dev, uint8_t c) {
   dev->framebuffer[base + 5U] = 0U;
   dev->col_px = (uint16_t)(dev->col_px + 6U);
 
+#if defined(OLED_REFRESH_MODE_FULL)
+  return ssd1306_flush(dev);
+#elif defined(OLED_REFRESH_MODE_REGION)
   if (need_full != 0U) {
     return ssd1306_flush(dev);
   }
   return ssd1306_flush_region(dev, col0, row_page, 6U);
+#else
+  if (need_full != 0U) {
+    return ssd1306_flush(dev);
+  }
+  return ssd1306_flush_region(dev, col0, row_page, 6U);
+#endif
 }
 
 stm_status_t ssd1306_flush(ssd1306_t *dev) {
@@ -329,7 +344,7 @@ stm_status_t ssd1306_flush(ssd1306_t *dev) {
 
   if ((dev == NULL) || (dev->framebuffer == NULL) ||
       (dev->initialized == 0U)) {
-    return STM_ERR_INVALID_ARG;
+    return (dev == NULL) ? STM_ERR_INVALID_ARG : STM_ERR_NOT_INITIALIZED;
   }
 
   st = ssd1306_send_commands(dev, setwin, sizeof(setwin));
@@ -343,6 +358,9 @@ stm_status_t ssd1306_write_text(ssd1306_t *dev, const char *text) {
   stm_status_t st = STM_OK;
   if ((dev == NULL) || (text == NULL)) {
     return STM_ERR_INVALID_ARG;
+  }
+  if (dev->initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
   }
   while (*text != '\0') {
     st = ssd1306_putc(dev, (uint8_t)*text);
@@ -361,6 +379,9 @@ stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
 
   if ((dev == NULL) || (text == NULL)) {
     return STM_ERR_INVALID_ARG;
+  }
+  if (dev->initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
   }
   if (col_px >= dev->width) {
     return STM_ERR_INVALID_ARG;
@@ -387,11 +408,14 @@ stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
 stm_status_t ssd1306_write_text_atf(ssd1306_t *dev, uint16_t page,
                                     uint16_t col_px, const char *fmt, ...) {
   char text_buf[64];
-  va_list ap;
   uint32_t n = 0U;
+  va_list ap;
 
   if ((dev == NULL) || (fmt == NULL)) {
     return STM_ERR_INVALID_ARG;
+  }
+  if (dev->initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
   }
 
   va_start(ap, fmt);
@@ -405,41 +429,88 @@ stm_status_t ssd1306_write_text_atf(ssd1306_t *dev, uint16_t page,
   return ssd1306_write_text_at(dev, page, col_px, text_buf);
 }
 
-void ssd1306_oled_init(void) { (void)ssd1306_init(&g_default_dev); }
+stm_status_t ssd1306_vwrite_text_atf(ssd1306_t *dev, uint16_t page,
+                                     uint16_t col_px, const char *fmt,
+                                     va_list ap) {
+  char text_buf[64];
+  uint32_t n = 0U;
 
-void ssd1306_oled_clear(void) { (void)ssd1306_clear(&g_default_dev); }
+  if ((dev == NULL) || (fmt == NULL)) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if (dev->initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
 
-void ssd1306_oled_cursor_home(void) {
-  (void)ssd1306_cursor_home(&g_default_dev);
+  n = ssd1306_vformat(text_buf, sizeof(text_buf), fmt, ap);
+  if (n == 0U) {
+    return STM_ERR_IO;
+  }
+
+  return ssd1306_write_text_at(dev, page, col_px, text_buf);
 }
 
-void ssd1306_oled_putc(uint8_t c) { (void)ssd1306_putc(&g_default_dev, c); }
+stm_status_t ssd1306_default_vwrite_text_atf(uint16_t page, uint16_t col_px,
+                                             const char *fmt, va_list ap) {
+  return ssd1306_vwrite_text_atf(&g_default_dev, page, col_px, fmt, ap);
+}
 
-void ssd1306_oled_refresh(void) { (void)ssd1306_flush(&g_default_dev); }
+stm_status_t ssd1306_default_write_text_atf(uint16_t page, uint16_t col_px,
+                                            const char *fmt, ...) {
+  va_list ap;
+  stm_status_t st = STM_OK;
+
+  va_start(ap, fmt);
+  st = ssd1306_default_vwrite_text_atf(page, col_px, fmt, ap);
+  va_end(ap);
+  return st;
+}
+
+stm_status_t ssd1306_default_init(void) { return ssd1306_init(&g_default_dev); }
+
+stm_status_t ssd1306_default_clear(void) { return ssd1306_clear(&g_default_dev); }
+
+stm_status_t ssd1306_default_cursor_home(void) {
+  return ssd1306_cursor_home(&g_default_dev);
+}
+
+stm_status_t ssd1306_default_putc(uint8_t c) {
+  return ssd1306_putc(&g_default_dev, c);
+}
+
+stm_status_t ssd1306_default_refresh(void) { return ssd1306_flush(&g_default_dev); }
+
+stm_status_t ssd1306_default_write_text_at(uint16_t page, uint16_t col_px,
+                                           const char *text) {
+  return ssd1306_write_text_at(&g_default_dev, page, col_px, text);
+}
+
+void ssd1306_oled_init(void) { (void)ssd1306_default_init(); }
+
+void ssd1306_oled_clear(void) { (void)ssd1306_default_clear(); }
+
+void ssd1306_oled_cursor_home(void) {
+  (void)ssd1306_default_cursor_home();
+}
+
+void ssd1306_oled_putc(uint8_t c) { (void)ssd1306_default_putc(c); }
+
+void ssd1306_oled_refresh(void) { (void)ssd1306_default_refresh(); }
 
 void ssd1306_oled_write_text_at(uint8_t page, uint8_t col_px,
                                 const char *text) {
-  (void)ssd1306_write_text_at(&g_default_dev, (uint16_t)page, (uint16_t)col_px,
-                              text);
+  (void)ssd1306_default_write_text_at((uint16_t)page, (uint16_t)col_px, text);
 }
 
 void ssd1306_oled_write_text_atf(uint8_t page, uint8_t col_px, const char *fmt,
                                  ...) {
-  char text_buf[64];
   va_list ap;
-  uint32_t n = 0U;
 
   if (fmt == NULL) {
     return;
   }
 
   va_start(ap, fmt);
-  n = ssd1306_vformat(text_buf, sizeof(text_buf), fmt, ap);
+  (void)ssd1306_default_vwrite_text_atf((uint16_t)page, (uint16_t)col_px, fmt, ap);
   va_end(ap);
-  if (n == 0U) {
-    return;
-  }
-
-  (void)ssd1306_write_text_at(&g_default_dev, (uint16_t)page, (uint16_t)col_px,
-                              text_buf);
 }

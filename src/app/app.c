@@ -2,14 +2,11 @@
 
 #include <stdint.h>
 
-#include "drivers/encoder.h"
-#include "drivers/pwm.h"
-#include "drivers/ssd1306_oled.h"
+#include "bsp/board_devices.h"
+#include "common/stm_assert.h"
+#include "common/stm_log.h"
 #include "drivers/systick.h"
-#include "drivers/usart1.h"
 
-/* PA0：TIM2_CH1 PWM，PWM 频率（载波）；占空比在循环里按“呼吸”曲线改。 */
-#define APP_BREATH_PWM_HZ       (1000U)
 /* 每多少毫秒改一次占空比；越小变化越快。 */
 #define APP_BREATH_STEP_MS      (12U)
 /* 相位 0..PHASE_MAX-1 走一个“先亮后暗”的三角周期；约 (STEP_MS * PHASE_MAX) ms 一整次呼吸。 */
@@ -17,140 +14,147 @@
 /* OLED 调试信息刷新节流：太快会阻塞 CPU 拖慢呼吸；500ms 人眼也跟得上。 */
 #define APP_DEBUG_OLED_PERIOD_MS (500U)
 
+/* 这些静态状态由三个任务函数共享，但不暴露到文件外。 */
+static uint32_t s_last_step_ms;
+static uint8_t s_time_inited;
+static uint16_t s_phase;
+static uint16_t s_duty_permille;
+static uint32_t s_last_oled_ms;
+static int16_t s_enc_prev;
+
 /*
- * 呼吸灯轮询函数（非阻塞）
- *
- * 设计思路：
- *   - 由 app_run_forever() 在 while(1) 里反复调用，可能每秒被调几万次。
- *   - 但真正“干活”（改 PWM 占空比）只发生在每 STEP_MS=12ms 一次。
- *   - 其他时间立即 return，让 CPU 去跑别的任务（如 UART 接收）——
- *     这就是嵌入式里典型的“合作式多任务 / cooperative multitasking”。
- *
- * 占空比变化曲线（三角波）：
- *   phase 从 0 计到 PHASE_MAX-1 = 399，每 12ms +1：
- *     phase ∈ [0, 200]   → 占空比 0 → 1000（亮起）
- *     phase ∈ [201, 399] → 占空比 995 → 5（变暗）
- *   一整圈 400 × 12ms ≈ 4.8 秒。
+ * 呼吸灯步进任务：
+ * - 每 APP_BREATH_STEP_MS 推进一步相位
+ * - 把三角波相位映射成占空比
+ * - 更新板级状态灯 PWM
  */
-static void app_breath_led_poll(void) {
-  /* static 局部变量：函数返回后值不丢，下次调用接着用。
-   * 这是 C 里实现“函数自己的私有状态”的标准做法，比全局变量更内聚。 */
-  static uint32_t s_last_step_ms;  /* 上一次推进 phase 的时间戳（ms） */
-  static uint8_t  s_time_inited;   /* 0 = 还没首次校准 s_last_step_ms */
-  static uint16_t s_phase;         /* 当前相位 0..399，驱动三角波 */
-
-  uint32_t now = systick_get_ms();  /* 获取系统启动以来的毫秒数 */
-
-  /* ---------- 首次进入：把 s_last_step_ms 校准到当前时间 ----------
-   * 否则 s_last_step_ms 默认为 0，第一次跑 (now - 0) 远大于 12ms，
-   * 会立刻连续推进很多个 phase，亮度跳变。 */
+static void app_breath_led_task(uint32_t now_ms) {
   if (s_time_inited == 0U) {
     s_time_inited = 1U;
-    s_last_step_ms = now;
+    s_last_step_ms = now_ms;
   }
 
-  /* ---------- 节流：12ms 还没到就立刻返回 ----------
-   * (uint32_t) 强转：让减法在无符号下进行，
-   * 即便 systick 计数将来溢出回零（49.7 天后），
-   * (now - s_last_step_ms) 仍然能给出正确的“经过的毫秒数”。
-   *
-   * 例：now=10, s_last_step_ms=4_294_967_290（接近 uint32 最大）
-   *     now - s_last_step_ms = 16（自动回绕，正确）。 */
-  if ((uint32_t)(now - s_last_step_ms) < APP_BREATH_STEP_MS) {
+  if ((uint32_t)(now_ms - s_last_step_ms) < APP_BREATH_STEP_MS) {
     return;
   }
-  s_last_step_ms = now;  /* 时间点已到，记下本次时间，等下一个 12ms */
+  s_last_step_ms = now_ms;
 
-  /* ---------- 推进相位 phase = (phase + 1) % 400 ---------- */
   s_phase = (uint16_t)(s_phase + 1U);
   if (s_phase >= APP_BREATH_PHASE_MAX) {
     s_phase = 0U;
   }
 
-  /* ---------- 由 phase 算三角波 tri ∈ [0, 200] ----------*/
-  uint16_t tri = (s_phase <= 200U) ? s_phase
-                                   : (uint16_t)(APP_BREATH_PHASE_MAX - s_phase);
-
-  /* ---------- 把 tri ∈ [0, 200] 线性映射到 duty ∈ [0, 1000] ----------
-    亮度
-
-    200        /\         400
-              /  \
-            /    \
-    0 ______/      \______*/
-  uint16_t duty = (uint16_t)(((uint32_t)tri * 1000U) / 200U);
-
-  (void)tim2_ch1_pwm_set_duty_permille(duty);
-
-  /* ---------- OLED 调试输出（二级节流，500ms 一次）----------
-   * 每写一行 ssd1306_oled_write_text_atf 大概阻塞 10~25ms（每字符 ~1ms I2C）。
-   * 如果每 12ms phase 一推进就写 OLED，CPU 反而被 I2C 阻塞，phase 推进周期
-   * 被拉到 60ms+，呼吸圈从 4.8s 变 ~25s。所以独立节流到 500ms：
-   *   - 呼吸阻塞 overhead 从 ~80% 降到 ~5%
-   *   - OLED 每秒刷 2 次，看变化够用 */
-  static uint32_t s_last_oled_ms;
-  if ((uint32_t)(now - s_last_oled_ms) >= APP_DEBUG_OLED_PERIOD_MS) {
-    s_last_oled_ms = now;
-
-    /* 编码器观察：连续读两次 CNT 算 delta，等效「过去 500ms 的脉冲数」。
-     * 平衡车里这个就是「轮速反馈」，单位 = 编码线数 × 4（4x 分辨率）。
-     *
-     * 方向约定：传入 TIM3_ENCODER_DIR_NORMAL 时，编码器顺时针(向右)旋转 -> CNT 正向；
-     *          若实际跑出来方向反了，把 app_init 里 tim3_encoder_init 的入参换成
-     *          TIM3_ENCODER_DIR_INVERTED 即可（硬件层翻转，应用层无需改符号）。 */
-    static int16_t s_enc_prev;
-    int16_t enc_now = tim3_encoder_get_count();
-    int16_t enc_delta = (int16_t)(enc_now - s_enc_prev);
-    s_enc_prev = enc_now;
-
-    /* OLED 布局（128x64，每行 ~21 字符）：
-     *   page 0: 标题
-     *   page 1: 当前 CNT（重点，直观看「转了多少」）
-     *   page 2: 500ms 增量（直观看「转得多快、哪个方向」）
-     *   page 3: 当前方向（+ 表示正转，- 表示反转，0 表示当前停转）
-     *   page 5: 呼吸灯调试（次要）
-     * 行尾留空格覆盖上一次的残留字符。 */
-    char dir_sym = (enc_delta > 0) ? '+' : (enc_delta < 0) ? '-' : '0';
-    ssd1306_oled_write_text_atf(0U, 0U, "TIM3 ENC (PA6/7)   ");
-    ssd1306_oled_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
-    ssd1306_oled_write_text_atf(2U, 0U, "dlt = %d        ", enc_delta);
-    ssd1306_oled_write_text_atf(3U, 0U, "dir = %c          ", dir_sym);
-    ssd1306_oled_write_text_atf(5U, 0U, "phase=%u duty=%u  ", s_phase, duty);
+  {
+    uint16_t tri = (s_phase <= 200U) ? s_phase
+                                     : (uint16_t)(APP_BREATH_PHASE_MAX - s_phase);
+    s_duty_permille = (uint16_t)(((uint32_t)tri * 1000U) / 200U);
   }
+
+  (void)bsp_status_led_set_duty_permille(s_duty_permille);
 }
 
-void app_init(void) {
+/*
+ * 编码器调试显示任务：
+ * - 读取当前累计计数
+ * - 与上次值做差得到近似速度增量
+ * - 刷新 OLED 第 0/1/2/3/5 行
+ */
+static void app_encoder_oled_task(void) {
+  int16_t enc_now = 0;
+  int16_t enc_delta = (int16_t)(enc_now - s_enc_prev);
+  char dir_sym = '0';
+
+  if (bsp_wheel_encoder_read_count(&enc_now) == STM_OK) {
+    enc_delta = (int16_t)(enc_now - s_enc_prev);
+    s_enc_prev = enc_now;
+  } else {
+    enc_now = 0;
+    enc_delta = 0;
+  }
+
+  dir_sym = (enc_delta > 0) ? '+' : (enc_delta < 0) ? '-' : '0';
+
+  (void)bsp_display_write_text_atf(0U, 0U, "wheel encoder      ");
+  (void)bsp_display_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
+  (void)bsp_display_write_text_atf(2U, 0U, "dlt = %d        ", enc_delta);
+  (void)bsp_display_write_text_atf(3U, 0U, "dir = %c          ", dir_sym);
+  (void)bsp_display_write_text_atf(5U, 0U, "phase=%u duty=%u  ",
+                                   s_phase, s_duty_permille);
+}
+
+/*
+ * 光敏调试显示任务：
+ * - 读取 4 次平均 ADC 原始值
+ * - 换算为 x.xxxV 的定点显示
+ * - 刷新 OLED 第 4 行；失败时显示错误码
+ */
+static void app_ambient_light_oled_task(void) {
+  uint16_t ldr_raw = 0U;
+  stm_status_t ldr_st = bsp_ambient_light_read_raw_average(&ldr_raw, 4U);
+
+  if (ldr_st == STM_OK) {
+    uint32_t ldr_mv = ((uint32_t)ldr_raw * 3300U + 2047U) / 4095U;
+    uint32_t ldr_v_int = ldr_mv / 1000U;
+    uint32_t ldr_v_frac = ldr_mv % 1000U;
+    uint32_t frac_hundreds = ldr_v_frac / 100U;
+    uint32_t frac_tens = (ldr_v_frac / 10U) % 10U;
+    uint32_t frac_ones = ldr_v_frac % 10U;
+
+    (void)bsp_display_write_text_atf(4U, 0U,
+                                     "LDR=%u %u.%u%u%uV ",
+                                     ldr_raw,
+                                     ldr_v_int,
+                                     frac_hundreds,
+                                     frac_tens,
+                                     frac_ones);
+    return;
+  }
+
+  (void)bsp_display_write_text_atf(4U, 0U, "LDR err=%d      ", (int32_t)ldr_st);
+}
+
+/* 主循环里的合作式任务调度器：先跑呼吸灯，再按 500ms 节流刷新 OLED 调试页。 */
+static void tasks(void) {
+  uint32_t now = systick_get_ms();
+
+  app_breath_led_task(now);
+
+  if ((uint32_t)(now - s_last_oled_ms) < APP_DEBUG_OLED_PERIOD_MS) {
+    return;
+  }
+  s_last_oled_ms = now;
+
+  app_encoder_oled_task();
+  app_ambient_light_oled_task();
+}
+
+stm_status_t app_init(void) {
+  stm_status_t st = STM_OK;
+
+  STM_ASSERT(APP_BREATH_STEP_MS > 0U, "app_cfg");
+  STM_ASSERT(APP_BREATH_PHASE_MAX > 200U, "app_cfg");
+
   systick_init_1ms();
-  if (usart1_init(115200UL, USART_OVERSAMPLING_16) != STM_OK) {
-    while (1) {
-    }
-  }
-  usart1_set_line_policy(USART1_LINE_CR_OR_LF);
-  usart1_enable_rx_interrupt();
-
-  if (ssd1306_init(ssd1306_default()) != STM_OK) {
-    while (1) {
-    }
+  st = bsp_default_devices_init();
+  if (st != STM_OK) {
+    return st;
   }
 
-  /* 呼吸灯：固定 PWM 频率，仅改 CCR1 占空比（见 app_breath_led_poll）。 */
-  if (tim2_ch1_pwm_init_hz(APP_BREATH_PWM_HZ, 0U) != STM_OK) {
-    while (1) {
-    }
+  st = bsp_console_write_string_blocking("\r\nboard console ready\r\n");
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_console_write_string_blocking("display/status-led/encoder/light ready\r\n");
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_console_write_string_blocking("Type a line, press Enter to flush to OLED.\r\n");
+  if (st != STM_OK) {
+    return st;
   }
 
-  /* 正交编码器：TIM3 编码器模式（PA6=A、PA7=B），硬件自动计数 + 测向。
-   * 第二个参数控制方向：默认 NORMAL（A 超前 B = CNT++）；
-   * 实测如果「向右转 CNT 反而减少」，改成 TIM3_ENCODER_DIR_INVERTED 即可。 */
-  if (tim3_encoder_init(TIM3_ENCODER_DIR_NORMAL) != STM_OK) {
-    while (1) {
-    }
-  }
-
-  usart1_send_string("\r\nUSART1 ready (PA9/PA10,115200 8N1)\r\n");
-  usart1_send_string("OLED ready (I2C1 remap PB8/PB9).\r\n");
-  usart1_send_string("Breath LED: TIM2_CH1 PWM on PA0.\r\n");
-  usart1_send_string("Type a line, press Enter to flush to OLED.\r\n");
+  STM_LOG_TEXT("app init ok\r\n");
+  return STM_OK;
 }
 
 /* SSD1306 屏幕共 8 个 page（0..7），每行 8 像素高。 */
@@ -163,23 +167,28 @@ void app_run_forever(void) {
   static uint8_t s_page_count = 0U;
 
   while (1) {
+    tasks();
 
-    app_breath_led_poll();
+    stm_status_t line_st = bsp_console_read_line_try(line, (uint16_t)sizeof(line));
+    if (line_st == STM_ERR_OVERFLOW) {
+      (void)bsp_console_write_string_blocking("line too long\r\n");
+      continue;
+    }
 
-    if (usart1_try_read_string(line, (uint16_t)sizeof(line)) != 0U) {
-      usart1_send_string("recv: ");
-      usart1_send_string(line);
-      usart1_send_string("\r\n");
+    if (line_st == STM_OK) {
+      (void)bsp_console_write_string_blocking("recv: ");
+      (void)bsp_console_write_string_blocking(line);
+      (void)bsp_console_write_string_blocking("\r\n");
 
       /* 8 行写满后，清屏再从第 0 行开始；
        * 否则 page_count 越界，ssd1306_write_text_at 会静默失败。 */
       if (s_page_count >= APP_OLED_PAGE_COUNT) {
-        ssd1306_oled_clear();
+        (void)bsp_display_clear();
         s_page_count = 0U;
       }
 
-      ssd1306_oled_write_text_atf(s_page_count, 0U,
-                                  "line=%s --- page=%u", line, s_page_count);
+      (void)bsp_display_write_text_atf(s_page_count, 0U,
+                                       "line=%s --- page=%u", line, s_page_count);
       ++s_page_count;
     }
   }

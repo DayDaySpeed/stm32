@@ -12,6 +12,8 @@ static uint8_t g_usart1_rx_storage[USART1_RX_BUF_SIZE];
 static ring_buffer_t g_usart1_rx_rb;
 
 static usart1_line_policy_t g_line_policy = USART1_LINE_CR_OR_LF;
+static uint8_t g_usart1_initialized;
+static uint8_t g_usart1_rx_overflow;
 
 /*
  * 由 PCLK 和波特率反推 BRR。
@@ -85,6 +87,25 @@ static uint8_t usart1_is_line_end(uint8_t ch, uint8_t *consume_next_lf) {
   }
 }
 
+static stm_status_t usart1_validate_config(const usart1_config_t *config) {
+  if ((config == NULL) || (config->baudrate == 0U)) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if ((config->oversampling != USART_OVERSAMPLING_16) &&
+      (config->oversampling != USART_OVERSAMPLING_8)) {
+    return STM_ERR_INVALID_ARG;
+  }
+  switch (config->line_policy) {
+  case USART1_LINE_CR_OR_LF:
+  case USART1_LINE_CR_ONLY:
+  case USART1_LINE_LF_ONLY:
+  case USART1_LINE_CRLF:
+    return STM_OK;
+  default:
+    return STM_ERR_INVALID_ARG;
+  }
+}
+
 /*
  * 初始化 USART1 基础收发能力（不直接开启接收中断）。
  *
@@ -94,10 +115,15 @@ static uint8_t usart1_is_line_end(uint8_t ch, uint8_t *consume_next_lf) {
  *   - 配置 PA9/PA10 复用功能（TX=复用推挽输出，RX=浮空输入）；
  *   - 配置 OVER8 并使能 UE/TE/RE。
  */
-stm_status_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling) {
+stm_status_t usart1_init_with_config(const usart1_config_t *config) {
   uint16_t brr = 0U;
-  stm_status_t st = usart1_compute_brr(bsp_clock_get_pclk2_hz(), baudrate,
-                                       oversampling, &brr);
+  stm_status_t st = usart1_validate_config(config);
+  if (st != STM_OK) {
+    return st;
+  }
+
+  st = usart1_compute_brr(bsp_clock_get_pclk2_hz(), config->baudrate,
+                          config->oversampling, &brr);
   if (st != STM_OK) {
     return st;
   }
@@ -113,14 +139,31 @@ stm_status_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling) {
 
   USART1_BRR = (uint32_t)brr;
 
-  if (oversampling == USART_OVERSAMPLING_8) {
+  if (config->oversampling == USART_OVERSAMPLING_8) {
     USART1_CR1 |= USART_CR1_OVER8_BIT;
   } else {
     USART1_CR1 &= ~USART_CR1_OVER8_BIT;
   }
 
   USART1_CR1 |= (USART_CR1_UE_BIT | USART_CR1_TE_BIT | USART_CR1_RE_BIT);
+  g_line_policy = config->line_policy;
+  g_usart1_rx_overflow = 0U;
+  g_usart1_initialized = 1U;
+
+  if (config->enable_rx_interrupt != 0U) {
+    return usart1_enable_rx_interrupt();
+  }
   return STM_OK;
+}
+
+stm_status_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling) {
+  const usart1_config_t config = {
+      .baudrate = baudrate,
+      .oversampling = oversampling,
+      .line_policy = USART1_LINE_CR_OR_LF,
+      .enable_rx_interrupt = 0U,
+  };
+  return usart1_init_with_config(&config);
 }
 
 /*
@@ -132,9 +175,13 @@ stm_status_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling) {
  *
  * 本函数只负责「开中断通路」，不负责 USART 基础初始化（波特率、GPIO、UE/TE/RE）。
  */
-void usart1_enable_rx_interrupt(void) {
+stm_status_t usart1_enable_rx_interrupt(void) {
+  if (g_usart1_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
   USART1_CR1 |= USART_CR1_RXNEIE_BIT;
   NVIC_ISER1 |= NVIC_USART1_IRQ_BIT;
+  return STM_OK;
 }
 
 void usart1_irq_handler(void) {
@@ -142,45 +189,73 @@ void usart1_irq_handler(void) {
     return;
   }
   uint8_t data = (uint8_t)USART1_DR;
-  (void)ring_buffer_push_byte(&g_usart1_rx_rb, data);
+  if (ring_buffer_push_byte(&g_usart1_rx_rb, data) == STM_ERR_OVERFLOW) {
+    g_usart1_rx_overflow = 1U;
+  }
 }
 
-void usart1_send_byte(uint8_t data) {
+stm_status_t usart1_write_byte_blocking(uint8_t data) {
+  if (g_usart1_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
   while ((USART1_SR & USART_SR_TXE_BIT) == 0U) {
   }
   USART1_DR = data;
+  return STM_OK;
 }
 
-void usart1_send_string(const char *str) {
+stm_status_t usart1_write_string_blocking(const char *str) {
+  if (str == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if (g_usart1_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
   while (*str != '\0') {
-    usart1_send_byte((uint8_t)*str);
+    (void)usart1_write_byte_blocking((uint8_t)*str);
     str++;
   }
+  return STM_OK;
 }
 
-uint8_t usart1_try_read_byte(uint8_t *out) {
-  if (ring_buffer_pop_byte(&g_usart1_rx_rb, out) != STM_OK) {
-    return 0U;
+stm_status_t usart1_read_byte_try(uint8_t *out) {
+  if (g_usart1_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
   }
-  return 1U;
+  return ring_buffer_pop_byte(&g_usart1_rx_rb, out);
 }
 
-void usart1_set_line_policy(usart1_line_policy_t policy) {
+stm_status_t usart1_set_line_policy(usart1_line_policy_t policy) {
+  switch (policy) {
+  case USART1_LINE_CR_OR_LF:
+  case USART1_LINE_CR_ONLY:
+  case USART1_LINE_LF_ONLY:
+  case USART1_LINE_CRLF:
+    break;
+  default:
+    return STM_ERR_INVALID_ARG;
+  }
   g_line_policy = policy;
+  return STM_OK;
 }
 
-uint8_t usart1_try_read_string(char *out, uint16_t out_size) {
+stm_status_t usart1_read_line_try(char *out, uint16_t out_size) {
   static char s_line_buf[USART1_RX_BUF_SIZE];
   static uint16_t s_line_len = 0U;
   static uint8_t s_consume_next_lf = 0U;
+  static uint8_t s_line_overflow = 0U;
 
   uint8_t ch = 0U;
+  stm_status_t st = STM_OK;
 
   if ((out == NULL) || (out_size < 2U)) {
-    return 0U;
+    return STM_ERR_INVALID_ARG;
+  }
+  if (g_usart1_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
   }
 
-  while (usart1_try_read_byte(&ch) != 0U) {
+  while ((st = usart1_read_byte_try(&ch)) == STM_OK) {
     if ((s_consume_next_lf != 0U) && (ch == '\n')) {
       s_consume_next_lf = 0U;
       continue;
@@ -188,8 +263,13 @@ uint8_t usart1_try_read_string(char *out, uint16_t out_size) {
 
     if (usart1_is_line_end(ch, &s_consume_next_lf) != 0U) {
       uint16_t copy_len = s_line_len;
-      if (s_line_len == 0U) {
+      if ((s_line_len == 0U) && (s_line_overflow == 0U)) {
         continue;
+      }
+      if (s_line_overflow != 0U) {
+        s_line_len = 0U;
+        s_line_overflow = 0U;
+        return STM_ERR_OVERFLOW;
       }
       if (copy_len > (out_size - 1U)) {
         copy_len = (uint16_t)(out_size - 1U);
@@ -199,7 +279,7 @@ uint8_t usart1_try_read_string(char *out, uint16_t out_size) {
       }
       out[copy_len] = '\0';
       s_line_len = 0U;
-      return 1U;
+      return STM_OK;
     }
 
     /* 退格（BS=0x08）/删除（DEL=0x7F）：在行缓冲里回退一个字符。 */
@@ -213,8 +293,31 @@ uint8_t usart1_try_read_string(char *out, uint16_t out_size) {
     if (s_line_len < (uint16_t)(USART1_RX_BUF_SIZE - 1U)) {
       s_line_buf[s_line_len] = (char)ch;
       s_line_len++;
+    } else {
+      s_line_overflow = 1U;
     }
   }
 
-  return 0U;
+  if (st == STM_ERR_BUSY) {
+    if (g_usart1_rx_overflow != 0U) {
+      g_usart1_rx_overflow = 0U;
+      return STM_ERR_OVERFLOW;
+    }
+    return STM_ERR_BUSY;
+  }
+  return st;
+}
+
+void usart1_send_byte(uint8_t data) { (void)usart1_write_byte_blocking(data); }
+
+void usart1_send_string(const char *str) {
+  (void)usart1_write_string_blocking(str);
+}
+
+uint8_t usart1_try_read_byte(uint8_t *out) {
+  return (usart1_read_byte_try(out) == STM_OK) ? 1U : 0U;
+}
+
+uint8_t usart1_try_read_string(char *out, uint16_t out_size) {
+  return (usart1_read_line_try(out, out_size) == STM_OK) ? 1U : 0U;
 }

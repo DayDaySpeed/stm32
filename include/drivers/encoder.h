@@ -40,23 +40,23 @@ typedef enum {
   TIM3_ENCODER_DIR_INVERTED = 1,
 } tim3_encoder_dir_t;
 
+typedef struct {
+  tim3_encoder_dir_t direction;
+} tim3_encoder_config_t;
+
 /* 初始化 TIM3 编码器模式，并配 PA6/PA7 为输入上拉。 */
+stm_status_t tim3_encoder_init_with_config(const tim3_encoder_config_t *config);
 stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction);
 
-/* 当前累计计数（带符号 16 位）。
- * 注意：TIM3_CNT 是 16 位寄存器，会自然回绕（0xFFFF -> 0），
- *      调用方应**短周期采样**并用 (int16_t) 强制截断来计算增量，
- *      让硬件回绕和软件回绕匹配上。 */
+/* 当前累计计数（带符号 16 位）。 */
+stm_status_t tim3_encoder_read_count(int16_t *out_count);
 int16_t tim3_encoder_get_count(void);
 
 /* 重置计数为 0。一般只在初始化或「校零」时调用。 */
-void tim3_encoder_reset_count(void);
+stm_status_t tim3_encoder_reset_count(void);
 
-/* 当前旋转方向。返回值：
- *   0 = 向上计数（正转 / forward）
- *   1 = 向下计数（反转 / reverse）
- * 注意：编码器停转时方向位保持上一次的值，所以单看方向不可靠，
- *      实际控制还是要靠 delta 的正负号。 */
+/* 当前旋转方向。0 = 向上计数，1 = 向下计数。 */
+stm_status_t tim3_encoder_read_direction(uint8_t *out_direction);
 uint8_t tim3_encoder_get_direction(void);
 
 #endif

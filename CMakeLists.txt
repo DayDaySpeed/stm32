@@ -14,9 +14,9 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-option(DEBUG_LOG "Enable lightweight debug logging macros" OFF)
-set(ASSERT_LEVEL "1" CACHE STRING "Assert strictness level (0-2)")
-set(OLED_REFRESH_MODE "AUTO" CACHE STRING "OLED refresh mode: AUTO, FULL, REGION")
+option(DEBUG_LOG "Enable lightweight debug log output through stm_log" OFF)
+set(ASSERT_LEVEL "1" CACHE STRING "Assert strictness level (0-2), consumed by stm_assert")
+set(OLED_REFRESH_MODE "AUTO" CACHE STRING "OLED refresh mode consumed by ssd1306 driver: AUTO, FULL, REGION")
 
 # C 语言标准
 set(CMAKE_C_STANDARD 11)

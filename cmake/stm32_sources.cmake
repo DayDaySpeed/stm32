@@ -3,12 +3,17 @@ set(STM32_ELF_SOURCES
   src/main.c
   src/app/app.c
   src/bsp/board_init.c
+  src/bsp/board_devices.c
   src/bsp/clock.c
   src/common/ring_buffer.c
+  src/common/stm_status.c
+  src/common/stm_log.c
+  src/common/stm_fault.c
   src/hal/i2c1_master.c
   src/drivers/systick.c
   src/drivers/pwm.c
   src/drivers/encoder.c
+  src/drivers/photoresistor.c
   src/drivers/usart1.c
   src/drivers/ssd1306_oled.c
   src/drivers/oled_font5x7.c

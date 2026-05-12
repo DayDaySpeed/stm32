@@ -19,11 +19,17 @@
 #include "bsp/board_pins.h"
 #include "bsp/stm32f103_regs.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
-stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction) {
-  if ((direction != TIM3_ENCODER_DIR_NORMAL) &&
-      (direction != TIM3_ENCODER_DIR_INVERTED)) {
+static uint8_t g_tim3_encoder_initialized;
+
+stm_status_t tim3_encoder_init_with_config(const tim3_encoder_config_t *config) {
+  if (config == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if ((config->direction != TIM3_ENCODER_DIR_NORMAL) &&
+      (config->direction != TIM3_ENCODER_DIR_INVERTED)) {
     return STM_ERR_INVALID_ARG;
   }
 
@@ -57,7 +63,7 @@ stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction) {
    *           两个都翻转又恢复原方向。所以这里只按入参动 CC1P。 */
   TIM3_CCER &= ~(TIM_CCER_CC1P_BIT | TIM_CCER_CC2P_BIT);
   TIM3_CCER |= TIM_CCER_CC1E_BIT | TIM_CCER_CC2E_BIT;
-  if (direction == TIM3_ENCODER_DIR_INVERTED) {
+  if (config->direction == TIM3_ENCODER_DIR_INVERTED) {
     TIM3_CCER |= TIM_CCER_CC1P_BIT; /* A 相反相 -> 整体计数方向反转 */
   }
 
@@ -68,7 +74,24 @@ stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction) {
   TIM3_CNT = 0U;
   TIM3_SR = 0U;
   TIM3_CR1 |= TIM_CR1_CEN_BIT;
+  g_tim3_encoder_initialized = 1U;
 
+  return STM_OK;
+}
+
+stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction) {
+  const tim3_encoder_config_t config = {.direction = direction};
+  return tim3_encoder_init_with_config(&config);
+}
+
+stm_status_t tim3_encoder_read_count(int16_t *out_count) {
+  if (out_count == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if (g_tim3_encoder_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
+  *out_count = (int16_t)(uint16_t)TIM3_CNT;
   return STM_OK;
 }
 
@@ -78,8 +101,23 @@ int16_t tim3_encoder_get_count(void) {
   return (int16_t)(uint16_t)TIM3_CNT;
 }
 
-void tim3_encoder_reset_count(void) {
+stm_status_t tim3_encoder_reset_count(void) {
+  if (g_tim3_encoder_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
   TIM3_CNT = 0U;
+  return STM_OK;
+}
+
+stm_status_t tim3_encoder_read_direction(uint8_t *out_direction) {
+  if (out_direction == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+  if (g_tim3_encoder_initialized == 0U) {
+    return STM_ERR_NOT_INITIALIZED;
+  }
+  *out_direction = ((TIM3_CR1 & TIM_CR1_DIR_BIT) != 0U) ? 1U : 0U;
+  return STM_OK;
 }
 
 uint8_t tim3_encoder_get_direction(void) {
