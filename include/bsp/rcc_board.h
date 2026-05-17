@@ -13,4 +13,7 @@
 #define RCC_BOARD_APB1_ENABLE_MASK \
   ((uint32_t)(RCC_I2C1EN_BIT | RCC_TIM2EN_BIT | RCC_TIM3EN_BIT))
 
+/* DMA1：ADC1 双通道 SCAN 搬运 */
+#define RCC_BOARD_AHB_ENABLE_MASK ((uint32_t)(RCC_DMA1EN_BIT))
+
 #endif

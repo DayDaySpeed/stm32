@@ -31,9 +31,24 @@ stm_status_t bsp_wheel_encoder_init(void);
 stm_status_t bsp_wheel_encoder_read_count(int16_t *out_count);
 stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction);
 
+/* 一次性初始化 ADC1 双通道 SCAN+DMA 及光敏/热敏逻辑驱动。 */
+stm_status_t bsp_analog_sensors_init(void);
+
 stm_status_t bsp_ambient_light_init(void);
 stm_status_t bsp_ambient_light_read_raw_average(uint16_t *out_raw12,
                                                 uint8_t sample_count);
+
+/*
+ * 一次 ADC SCAN+DMA 同时得到光敏/热敏平均原始值（0~4095）。
+ * out_photo_raw12、out_therm_raw12 均不可为 NULL；scan_count==0 非法。
+ */
+stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
+                                                  uint16_t *out_therm_raw12,
+                                                  uint8_t scan_count);
+
+/* 由热敏 ADC 原始值换算温度，单位 0.1 摄氏度（例如 253 = 25.3°C）。 */
+stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
+                                                       int16_t *out_celsius_x10);
 
 /* 一次性初始化本板默认设备。 */
 stm_status_t bsp_default_devices_init(void);

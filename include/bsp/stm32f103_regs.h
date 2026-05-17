@@ -9,6 +9,9 @@
 #define RCC_CFGR            (*(volatile uint32_t *)(RCC_BASE + 0x04UL)) /* 时钟配置寄存器：系统时钟源、分频、PLL 配置 */
 #define RCC_APB1ENR         (*(volatile uint32_t *)(RCC_BASE + 0x1CUL)) /* APB1 外设时钟使能寄存器 */
 #define RCC_APB2ENR         (*(volatile uint32_t *)(RCC_BASE + 0x18UL)) /* APB2 外设时钟使能寄存器 */
+#define RCC_AHBENR          (*(volatile uint32_t *)(RCC_BASE + 0x14UL)) /* AHB 外设时钟使能寄存器 */
+
+#define RCC_DMA1EN_BIT      (1U << 0)  /* DMA1 时钟使能（AHBENR） */
 
 #define RCC_TIM2EN_BIT      (1U << 0)  /* TIM2 时钟使能（APB1ENR） */
 #define RCC_TIM3EN_BIT      (1U << 1)  /* TIM3 时钟使能（APB1ENR） */
@@ -195,15 +198,49 @@
 #define ADC1_SQR3           (*(volatile uint32_t *)(ADC1_BASE + 0x34UL)) /* 规则序列寄存器3（SQ1..SQ6） */
 #define ADC1_DR             (*(volatile uint32_t *)(ADC1_BASE + 0x4CUL)) /* 规则组数据寄存器（12 位右对齐） */
 
+#define ADC_CR1_SCAN_BIT    (1U << 8)   /* 扫描模式：按 SQR 序列依次转换多路 */
+#define ADC_CR1_L_SHIFT     (20U)       /* SQR1.L[3:0]：规则序列长度 - 1 */
+#define ADC_CR1_L_MASK      (0xFU << ADC_CR1_L_SHIFT)
+#define ADC_CR1_L_2_CONV    (1U << ADC_CR1_L_SHIFT) /* L=1 → 共 2 次转换 */
+
+#define ADC_SQR3_SQ1_SHIFT  (0U)
+#define ADC_SQR3_SQ2_SHIFT  (5U)
+#define ADC_SQR3_SQ_MASK    (0x1FU)
+#define ADC_SQR3_SQ1(ch)    (((uint32_t)(ch) & ADC_SQR3_SQ_MASK) << ADC_SQR3_SQ1_SHIFT)
+#define ADC_SQR3_SQ2(ch)    (((uint32_t)(ch) & ADC_SQR3_SQ_MASK) << ADC_SQR3_SQ2_SHIFT)
+
+#define ADC_SMPR2_SMP1_SHIFT (3U)
+#define ADC_SMPR2_SMP2_SHIFT (6U)
+#define ADC_SMPR2_SMP_MASK   (7U)
+#define ADC_SMPR2_SMP1_MAX   (7U << ADC_SMPR2_SMP1_SHIFT)
+#define ADC_SMPR2_SMP2_MAX   (7U << ADC_SMPR2_SMP2_SHIFT)
+
 #define ADC_SR_EOC_BIT      (1U << 1)   /* 规则组转换结束（读 DR 或写 SR 可清） */
 #define ADC_CR2_ADON_BIT    (1U << 0)   /* ADC 上电/使能 */
 #define ADC_CR2_CONT_BIT    (1U << 1)   /* 连续转换模式 */
+#define ADC_CR2_DMA_BIT     (1U << 8)   /* 规则组转换结果经 DMA 搬运 */
 #define ADC_CR2_CAL_BIT     (1U << 2)   /* 启动校准（硬件完成后清零） */
 #define ADC_CR2_RSTCAL_BIT  (1U << 3)   /* 复位校准寄存器（硬件完成后清零） */
 #define ADC_CR2_EXTSEL_MASK (7U << 17)  /* 规则组外部触发源选择（EXTSEL[2:0]） */
 #define ADC_CR2_EXTSEL_SWSTART (7U << 17) /* 规则组触发源选择为 SWSTART */
 #define ADC_CR2_EXTTRIG_BIT (1U << 20)  /* 规则组外部触发允许；软件触发也需先放行 */
 #define ADC_CR2_SWSTART_BIT (1U << 22)  /* 软件启动规则组转换 */
+
+/* DMA1（直接存储器访问，Direct Memory Access）：ADC1 规则组固定走 Channel1 */
+#define DMA1_BASE           (0x40020000UL)
+#define DMA1_ISR            (*(volatile uint32_t *)(DMA1_BASE + 0x00UL))
+#define DMA1_IFCR           (*(volatile uint32_t *)(DMA1_BASE + 0x04UL))
+#define DMA1_CCR1           (*(volatile uint32_t *)(DMA1_BASE + 0x08UL))
+#define DMA1_CNDTR1         (*(volatile uint32_t *)(DMA1_BASE + 0x0CUL))
+#define DMA1_CPAR1          (*(volatile uint32_t *)(DMA1_BASE + 0x10UL))
+#define DMA1_CMAR1          (*(volatile uint32_t *)(DMA1_BASE + 0x14UL))
+
+#define DMA_ISR_TCIF1_BIT   (1U << 1)   /* 通道 1 传输完成 */
+#define DMA_IFCR_CTCIF1_BIT (1U << 1)   /* 写 1 清通道 1 TC 标志 */
+#define DMA_CCR_EN_BIT      (1U << 0)   /* 通道使能 */
+#define DMA_CCR_MINC_BIT    (1U << 7)   /* 内存地址递增 */
+#define DMA_CCR_PSIZE_16_BIT (1U << 8)  /* 外设宽度 16 位 */
+#define DMA_CCR_MSIZE_16_BIT (1U << 10) /* 内存宽度 16 位 */
 
 /* NVIC（嵌套向量中断控制器，Nested Vectored Interrupt Controller）：负责中断使能与中断分发 */
 #define NVIC_BASE           (0xE000E100UL) /* NVIC 基地址 */

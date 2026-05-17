@@ -83,34 +83,58 @@ static void app_encoder_oled_task(void) {
 }
 
 /*
- * 光敏调试显示任务：
- * - 读取 4 次平均 ADC 原始值
- * - 换算为 x.xxxV 的定点显示
- * - 刷新 OLED 第 4 行；失败时显示错误码
+ * 光敏 + 热敏调试显示（一次 SCAN+DMA 双通道平均采样）：
+ * - 第 4 行：光敏原始值与估算电压
+ * - 第 6 行：热敏温度（0.1°C）与原始 ADC
  */
-static void app_ambient_light_oled_task(void) {
+static void app_analog_sensors_oled_task(void) {
   uint16_t ldr_raw = 0U;
-  stm_status_t ldr_st = bsp_ambient_light_read_raw_average(&ldr_raw, 4U);
+  uint16_t ntc_raw = 0U;
+  stm_status_t st =
+      bsp_analog_sensors_read_pair_average(&ldr_raw, &ntc_raw, 4U);
 
-  if (ldr_st == STM_OK) {
+  if (st != STM_OK) {
+    (void)bsp_display_write_text_atf(4U, 0U, "ADC err=%d        ", (int32_t)st);
+    (void)bsp_display_write_text_atf(6U, 0U, "NTC err=%d        ", (int32_t)st);
+    return;
+  }
+
+  {
     uint32_t ldr_mv = ((uint32_t)ldr_raw * 3300U + 2047U) / 4095U;
     uint32_t ldr_v_int = ldr_mv / 1000U;
     uint32_t ldr_v_frac = ldr_mv % 1000U;
-    uint32_t frac_hundreds = ldr_v_frac / 100U;
-    uint32_t frac_tens = (ldr_v_frac / 10U) % 10U;
-    uint32_t frac_ones = ldr_v_frac % 10U;
 
     (void)bsp_display_write_text_atf(4U, 0U,
                                      "LDR=%u %u.%u%u%uV ",
                                      ldr_raw,
                                      ldr_v_int,
-                                     frac_hundreds,
-                                     frac_tens,
-                                     frac_ones);
-    return;
+                                     ldr_v_frac / 100U,
+                                     (ldr_v_frac / 10U) % 10U,
+                                     ldr_v_frac % 10U);
   }
 
-  (void)bsp_display_write_text_atf(4U, 0U, "LDR err=%d      ", (int32_t)ldr_st);
+  {
+    int16_t temp_x10 = 0;
+    stm_status_t temp_st =
+        bsp_temperature_read_celsius_x10_from_raw(ntc_raw, &temp_x10);
+
+    if (temp_st != STM_OK) {
+      (void)bsp_display_write_text_atf(6U, 0U, "NTC err=%d raw=%u ",
+                                       (int32_t)temp_st, ntc_raw);
+      return;
+    }
+
+    {
+      char sign = (temp_x10 < 0) ? '-' : ' ';
+      int32_t t_abs = (temp_x10 < 0) ? -(int32_t)temp_x10 : (int32_t)temp_x10;
+      int32_t t_int = t_abs / 10;
+      int32_t t_frac = t_abs % 10;
+
+      (void)bsp_display_write_text_atf(6U, 0U,
+                                       "NTC=%c%d.%dC raw=%u  ",
+                                       sign, t_int, t_frac, ntc_raw);
+    }
+  }
 }
 
 /* 主循环里的合作式任务调度器：先跑呼吸灯，再按 500ms 节流刷新 OLED 调试页。 */
@@ -125,7 +149,7 @@ static void tasks(void) {
   s_last_oled_ms = now;
 
   app_encoder_oled_task();
-  app_ambient_light_oled_task();
+  app_analog_sensors_oled_task();
 }
 
 stm_status_t app_init(void) {
@@ -144,7 +168,8 @@ stm_status_t app_init(void) {
   if (st != STM_OK) {
     return st;
   }
-  st = bsp_console_write_string_blocking("display/status-led/encoder/light ready\r\n");
+  st = bsp_console_write_string_blocking(
+      "display/status-led/encoder/light/temp ready\r\n");
   if (st != STM_OK) {
     return st;
   }

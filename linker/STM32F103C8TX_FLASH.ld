@@ -32,6 +32,8 @@ SECTIONS
     *(.init_array*)
     *(.fini_array*)
     *(.eh_frame)
+    *(.ARM.exidx*)
+    *(.ARM.extab*)
     . = ALIGN(4);
     _etext = .;
   } > FLASH

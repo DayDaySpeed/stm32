@@ -3,8 +3,10 @@
 #include <stdarg.h>
 
 #include "common/stm_log.h"
+#include "drivers/adc1_dual_scan_dma.h"
 #include "drivers/encoder.h"
 #include "drivers/photoresistor.h"
+#include "drivers/thermistor.h"
 #include "drivers/pwm.h"
 #include "drivers/ssd1306_oled.h"
 #include "drivers/usart1.h"
@@ -28,9 +30,22 @@ static const tim3_encoder_config_t g_board_wheel_encoder_config = {
     .direction = TIM3_ENCODER_DIR_NORMAL,
 };
 
+static const adc1_dual_config_t g_board_adc_dual_config = {
+    .clock_source = ADC1_DUAL_CLOCK_SOURCE_PCLK2,
+    .adc_prescaler = ADC1_DUAL_PRESCALER_AUTO,
+};
+
 static const photoresistor_config_t g_board_ambient_light_config = {
     .clock_source = PHOTO_ADC_CLOCK_SOURCE_PCLK2,
     .adc_prescaler = PHOTO_ADC_PRESCALER_AUTO,
+};
+
+static const thermistor_config_t g_board_temperature_config = {
+    .clock_source = THERMISTOR_ADC_CLOCK_SOURCE_PCLK2,
+    .adc_prescaler = THERMISTOR_ADC_PRESCALER_AUTO,
+    .divider_topology = THERMISTOR_DIVIDER_FIXED_UP_NTC_DOWN,
+    .fixed_resistor_ohms = 10000U,
+    .vdda_mv = 3300U,
 };
 
 stm_status_t bsp_console_init(void) {
@@ -91,6 +106,18 @@ stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction) {
   return tim3_encoder_read_direction(out_direction);
 }
 
+stm_status_t bsp_analog_sensors_init(void) {
+  stm_status_t st = adc1_dual_init_with_config(&g_board_adc_dual_config);
+  if (st != STM_OK) {
+    return st;
+  }
+  st = photoresistor_init_with_config(&g_board_ambient_light_config);
+  if (st != STM_OK) {
+    return st;
+  }
+  return thermistor_init_with_config(&g_board_temperature_config);
+}
+
 stm_status_t bsp_ambient_light_init(void) {
   return photoresistor_init_with_config(&g_board_ambient_light_config);
 }
@@ -98,6 +125,32 @@ stm_status_t bsp_ambient_light_init(void) {
 stm_status_t bsp_ambient_light_read_raw_average(uint16_t *out_raw12,
                                                 uint8_t sample_count) {
   return photoresistor_read_raw_average_blocking(out_raw12, sample_count);
+}
+
+stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
+                                                  uint16_t *out_therm_raw12,
+                                                  uint8_t scan_count) {
+  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U};
+  stm_status_t st = STM_OK;
+
+  if ((out_photo_raw12 == NULL) || (out_therm_raw12 == NULL)) {
+    return STM_ERR_INVALID_ARG;
+  }
+
+  st = adc1_dual_read_pair_average_blocking(pair, scan_count);
+  if (st != STM_OK) {
+    return st;
+  }
+
+  *out_photo_raw12 = pair[ADC1_DUAL_SLOT_PHOTO];
+  *out_therm_raw12 = pair[ADC1_DUAL_SLOT_THERM];
+  return STM_OK;
+}
+
+stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
+                                                       int16_t *out_celsius_x10) {
+  return thermistor_read_temperature_from_raw_blocking(therm_raw12,
+                                                       out_celsius_x10);
 }
 
 stm_status_t bsp_default_devices_init(void) {
@@ -121,5 +174,5 @@ stm_status_t bsp_default_devices_init(void) {
   if (st != STM_OK) {
     return st;
   }
-  return bsp_ambient_light_init();
+  return bsp_analog_sensors_init();
 }

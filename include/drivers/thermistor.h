@@ -40,7 +40,7 @@ typedef struct {
 } thermistor_config_t;
 
 /*
- * 热敏电阻模块驱动（默认 PA2 = ADC1_IN2）
+ * 热敏电阻模块驱动 —— 共享 ADC1 双通道 SCAN+DMA 的 IN2（PA2）
  *
  * 约定硬件：
  *   - 常见 10k NTC（B=3950）模拟模块
@@ -61,6 +61,13 @@ stm_status_t thermistor_read_millivolts_blocking(uint32_t *out_mv);
 stm_status_t thermistor_read_resistance_ohms_blocking(uint32_t *out_ohms);
 stm_status_t thermistor_read_temperature_celsius_x10_blocking(
     int16_t *out_celsius_x10);
+
+/*
+ * 由已有 ADC 原始值换算温度（不再触发采样）。
+ * 配合 adc1_dual / bsp_analog_sensors_read_pair_* 一次 SCAN 读两路时使用。
+ */
+stm_status_t thermistor_read_temperature_from_raw_blocking(
+    uint16_t raw12, int16_t *out_celsius_x10);
 
 /* 兼容包装：新代码优先使用 `_blocking` 命名。 */
 stm_status_t thermistor_read_raw(uint16_t *out_raw12);

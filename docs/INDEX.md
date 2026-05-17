@@ -14,6 +14,7 @@
 - [NVIC 专题](../NVIC.md)
 - [PWM 专题](../pwm.md)
 - [编码器专题](../encoder.md)
+- [ADC 单通道与 SCAN+DMA](../adc.md)
 
 ## 阅读顺序建议
 
