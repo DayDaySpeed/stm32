@@ -1,5 +1,7 @@
 #include "bsp/board_devices.h"
 
+#include "bsp/board_config.h"
+
 #include <stdarg.h>
 
 #include "common/stm_log.h"
@@ -30,7 +32,7 @@ static const tim2_ch1_pwm_config_t g_board_status_led_config = {
 };
 
 static const tim3_encoder_config_t g_board_wheel_encoder_config = {
-    .direction = TIM3_ENCODER_DIR_NORMAL,
+    .direction = BOARD_WHEEL_ENCODER_DIRECTION,
 };
 
 static const dc_motor_config_t g_board_dc_motor_config = {

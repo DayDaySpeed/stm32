@@ -32,8 +32,8 @@
  *   TIM3_ENCODER_DIR_NORMAL   = A 相超前 B 相 -> 顺时针正转 CNT++
  *   TIM3_ENCODER_DIR_INVERTED = 硬件翻转 A 相极性 -> 方向反过来
  *
- * 实测时如果发现「向右转」反而 CNT 减少，把入参换成 INVERTED 即可，
- * 等价于硬件层面交换 A/B，应用层无需再处理符号。
+ * 方向与接线：在 include/bsp/board_config.h 里改 BOARD_WHEEL_ENCODER_DIRECTION；
+ * 应用 init 时勿写死 NORMAL/INVERTED。
  */
 typedef enum {
   TIM3_ENCODER_DIR_NORMAL = 0,
