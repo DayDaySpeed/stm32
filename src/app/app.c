@@ -156,12 +156,13 @@ static void app_motor_encoder_task(uint32_t now_ms) {
 }
 
 /*
- * 光敏 + 热敏（page 3..4，一次 SCAN+DMA 双通道平均）：
- *   3 LDR   4 NTC
+ * 光敏 + 热敏 + 反射红外（page 3..5，一次 SCAN+DMA 三路平均）：
+ *   3 LDR   4 NTC   5 IR
  */
 static stm_status_t app_analog_sensors_oled_task(void) {
   uint16_t ldr_raw = 0U;
   uint16_t ntc_raw = 0U;
+  uint16_t ir_raw = 0U;
   stm_status_t st =
       bsp_analog_sensors_read_pair_average(&ldr_raw, &ntc_raw, 4U);
 
@@ -207,10 +208,23 @@ static stm_status_t app_analog_sensors_oled_task(void) {
       int32_t t_int = t_abs / 10;
       int32_t t_frac = t_abs % 10;
 
-      return bsp_display_write_text_atf(4U, 0U,
-                                          "NTC=%c%d.%dC raw=%u  ",
-                                          sign, t_int, t_frac, ntc_raw);
+      st = bsp_display_write_text_atf(4U, 0U,
+                                        "NTC=%c%d.%dC raw=%u  ",
+                                        sign, t_int, t_frac, ntc_raw);
+      if (st != STM_OK) {
+        return st;
+      }
     }
+  }
+
+  st = bsp_ir_reflect_read_raw_average(&ir_raw, 4U);
+  if (st != STM_OK) {
+    return bsp_display_write_text_atf(5U, 0U, "IR err=%d        ", (int32_t)st);
+  }
+
+  {
+    uint32_t ir_mv = ((uint32_t)ir_raw * 3300U + 2047U) / 4095U;
+    return bsp_display_write_text_atf(5U, 0U, "IR=%u %umV       ", ir_raw, ir_mv);
   }
 }
 
@@ -279,7 +293,7 @@ stm_status_t app_init(void) {
     return st;
   }
   st = bsp_console_write_string_blocking(
-      "display/led/encoder/motor/light/temp ready\r\n");
+      "display/led/encoder/motor/light/temp/ir ready\r\n");
   if (st != STM_OK) {
     return st;
   }

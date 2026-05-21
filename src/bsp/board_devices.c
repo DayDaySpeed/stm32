@@ -9,6 +9,7 @@
 #include "drivers/dc_motor.h"
 #include "drivers/encoder.h"
 #include "drivers/photoresistor.h"
+#include "drivers/ir_reflect.h"
 #include "drivers/thermistor.h"
 #include "drivers/pwm.h"
 #include "drivers/ssd1306_oled.h"
@@ -56,6 +57,11 @@ static const thermistor_config_t g_board_temperature_config = {
     .divider_topology = THERMISTOR_DIVIDER_FIXED_UP_NTC_DOWN,
     .fixed_resistor_ohms = 10000U,
     .vdda_mv = 3300U,
+};
+
+static const ir_reflect_config_t g_board_ir_reflect_config = {
+    .clock_source = IR_REFLECT_ADC_CLOCK_SOURCE_PCLK2,
+    .adc_prescaler = IR_REFLECT_ADC_PRESCALER_AUTO,
 };
 
 stm_status_t bsp_console_init(void) {
@@ -146,7 +152,16 @@ stm_status_t bsp_analog_sensors_init(void) {
   if (st != STM_OK) {
     return st;
   }
-  return thermistor_init_with_config(&g_board_temperature_config);
+  st = thermistor_init_with_config(&g_board_temperature_config);
+  if (st != STM_OK) {
+    return st;
+  }
+  return ir_reflect_init_with_config(&g_board_ir_reflect_config);
+}
+
+stm_status_t bsp_ir_reflect_read_raw_average(uint16_t *out_raw12,
+                                             uint8_t sample_count) {
+  return ir_reflect_read_raw_average_blocking(out_raw12, sample_count);
 }
 
 stm_status_t bsp_ambient_light_init(void) {
@@ -161,7 +176,7 @@ stm_status_t bsp_ambient_light_read_raw_average(uint16_t *out_raw12,
 stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
                                                   uint16_t *out_therm_raw12,
                                                   uint8_t scan_count) {
-  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U};
+  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
   stm_status_t st = STM_OK;
 
   if ((out_photo_raw12 == NULL) || (out_therm_raw12 == NULL)) {

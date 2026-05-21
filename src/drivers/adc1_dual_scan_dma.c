@@ -4,12 +4,13 @@
  * 电路/数据流：
  *   PA1(IN1 光敏) ─┐
  *                  ├─ ADC1 规则组 SCAN：SQ1→SQ2，一次 SWSTART 连续采 2 路
- *   PA2(IN2 热敏) ─┘
+ *   PA2(IN2 热敏) ─┤
+ *   PA3(IN3 反射红外)┘
  *                  └─ 每完成一路转换，硬件把 ADC1_DR 经 DMA 写入 RAM 缓冲区
  *
  * STM32F103 要点：
  *   - CR1.SCAN=1：按 SQR 序列扫描
- *   - SQR1.L=1：序列长度 2（L 表示 N-1）
+ *   - SQR1.L=2：序列长度 3（L 表示 N-1）
  *   - CR2.DMA=1：规则组结果自动触发 DMA
  *   - DMA1 通道 1 专用于 ADC1；轮询 TCIF1 完成，本工程暂不用 DMA 中断
  */
@@ -26,6 +27,7 @@
 
 #define ADC1_DUAL_CH_PHOTO          (1U)
 #define ADC1_DUAL_CH_THERM          (2U)
+#define ADC1_DUAL_CH_IR_REFLECT     (3U)
 
 #define ADC1_DUAL_CALIB_DELAY_LOOPS (2000U)
 #define ADC1_DUAL_FLAG_TIMEOUT_LOOPS (200000U)
@@ -161,16 +163,23 @@ static stm_status_t adc1_dual_adc_calibrate(void) {
   return adc1_dual_wait_cr2_clear(ADC_CR2_CAL_BIT);
 }
 
+static void adc1_dual_configure_gpio_analog(void) {
+  GPIOA_CRL = (GPIOA_CRL & ~(BOARD_GPIO_PA1_CRL_MASK | BOARD_GPIO_PA2_CRL_MASK |
+                              BOARD_GPIO_PA3_CRL_MASK)) |
+              BOARD_GPIO_PA1_ANALOG | BOARD_GPIO_PA2_ANALOG | BOARD_GPIO_PA3_ANALOG;
+}
+
 static void adc1_dual_configure_scan_sequence(void) {
   uint32_t smpr_mask = (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP1_SHIFT) |
-                       (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP2_SHIFT);
-//配置采样时间寄存器2|SMPR2[CH0 ~ CH9]
+                       (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP2_SHIFT) |
+                       (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP3_SHIFT);
+
   ADC1_SMPR2 = (ADC1_SMPR2 & ~smpr_mask) | ADC_SMPR2_SMP1_MAX |
-               ADC_SMPR2_SMP2_MAX;
-//转换序列长度寄存器SQR1|设置转换数 = 2
-  ADC1_SQR1 = (ADC1_SQR1 & ~ADC_CR1_L_MASK) | ADC_CR1_L_2_CONV;
-//规则序列寄存器SQR3|第一次采集ch1,第二次采集ch2
-  ADC1_SQR3 = ADC_SQR3_SQ1(ADC1_DUAL_CH_PHOTO) | ADC_SQR3_SQ2(ADC1_DUAL_CH_THERM);
+               ADC_SMPR2_SMP2_MAX | ADC_SMPR2_SMP3_MAX;
+  ADC1_SQR1 = (ADC1_SQR1 & ~ADC_CR1_L_MASK) | ADC_CR1_L_3_CONV;
+  ADC1_SQR3 = ADC_SQR3_SQ1(ADC1_DUAL_CH_PHOTO) |
+              ADC_SQR3_SQ2(ADC1_DUAL_CH_THERM) |
+              ADC_SQR3_SQ3(ADC1_DUAL_CH_IR_REFLECT);
 }
 
 static void adc1_dual_dma_disable_channel(void) {
@@ -227,12 +236,17 @@ stm_status_t adc1_dual_init_with_config(const adc1_dual_config_t *config) {
     return st;
   }
 
+  s_config = *config;
+
   if (s_initialized != 0U) {
-    s_config = *config;
+    st = adc1_dual_configure_adc_clock(config);
+    if (st != STM_OK) {
+      return st;
+    }
+    adc1_dual_configure_gpio_analog();
+    adc1_dual_configure_scan_sequence();
     return STM_OK;
   }
-
-  s_config = *config;
 
   RCC_AHBENR |= RCC_BOARD_AHB_ENABLE_MASK;
 
@@ -241,8 +255,7 @@ stm_status_t adc1_dual_init_with_config(const adc1_dual_config_t *config) {
     return st;
   }
 
-  GPIOA_CRL = (GPIOA_CRL & ~(BOARD_GPIO_PA1_CRL_MASK | BOARD_GPIO_PA2_CRL_MASK)) |
-              BOARD_GPIO_PA1_ANALOG | BOARD_GPIO_PA2_ANALOG;
+  adc1_dual_configure_gpio_analog();
 
   ADC1_CR1 = ADC_CR1_SCAN_BIT;
   ADC1_CR2 = 0U;
@@ -268,23 +281,24 @@ stm_status_t adc1_dual_init(void) {
   return adc1_dual_init_with_config(&config);
 }
 
-stm_status_t adc1_dual_read_pair_blocking(uint16_t out_pair[2]) {
-  if (out_pair == NULL) {
+stm_status_t adc1_dual_read_all_blocking(uint16_t out_samples[ADC1_DUAL_SLOT_COUNT]) {
+  if (out_samples == NULL) {
     return STM_ERR_INVALID_ARG;
   }
   if (s_initialized == 0U) {
     return STM_ERR_NOT_INITIALIZED;
   }
 
-  return adc1_dual_start_scan_dma_blocking(out_pair, ADC1_DUAL_SLOT_COUNT);
+  return adc1_dual_start_scan_dma_blocking(out_samples, ADC1_DUAL_SLOT_COUNT);
 }
 
-stm_status_t adc1_dual_read_pair_average_blocking(uint16_t out_pair[2],
-                                                  uint8_t scan_count) {
+stm_status_t adc1_dual_read_all_average_blocking(
+    uint16_t out_samples[ADC1_DUAL_SLOT_COUNT], uint8_t scan_count) {
   uint32_t sum_photo = 0U;
   uint32_t sum_therm = 0U;
+  uint32_t sum_ir = 0U;
 
-  if ((out_pair == NULL) || (scan_count == 0U)) {
+  if ((out_samples == NULL) || (scan_count == 0U)) {
     return STM_ERR_INVALID_ARG;
   }
   if (s_initialized == 0U) {
@@ -292,18 +306,58 @@ stm_status_t adc1_dual_read_pair_average_blocking(uint16_t out_pair[2],
   }
 
   for (uint8_t i = 0U; i < scan_count; i++) {
-    uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U};
+    uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
     stm_status_t st = adc1_dual_start_scan_dma_blocking(sample, ADC1_DUAL_SLOT_COUNT);
     if (st != STM_OK) {
       return st;
     }
     sum_photo += sample[ADC1_DUAL_SLOT_PHOTO];
     sum_therm += sample[ADC1_DUAL_SLOT_THERM];
+    sum_ir += sample[ADC1_DUAL_SLOT_IR_REFLECT];
   }
 
-  out_pair[ADC1_DUAL_SLOT_PHOTO] =
+  out_samples[ADC1_DUAL_SLOT_PHOTO] =
       (uint16_t)(sum_photo / (uint32_t)scan_count);
-  out_pair[ADC1_DUAL_SLOT_THERM] =
+  out_samples[ADC1_DUAL_SLOT_THERM] =
       (uint16_t)(sum_therm / (uint32_t)scan_count);
+  out_samples[ADC1_DUAL_SLOT_IR_REFLECT] =
+      (uint16_t)(sum_ir / (uint32_t)scan_count);
+  return STM_OK;
+}
+
+stm_status_t adc1_dual_read_pair_blocking(uint16_t out_pair[2]) {
+  uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
+  stm_status_t st = STM_OK;
+
+  if (out_pair == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+
+  st = adc1_dual_read_all_blocking(sample);
+  if (st != STM_OK) {
+    return st;
+  }
+
+  out_pair[ADC1_DUAL_SLOT_PHOTO] = sample[ADC1_DUAL_SLOT_PHOTO];
+  out_pair[ADC1_DUAL_SLOT_THERM] = sample[ADC1_DUAL_SLOT_THERM];
+  return STM_OK;
+}
+
+stm_status_t adc1_dual_read_pair_average_blocking(uint16_t out_pair[2],
+                                                  uint8_t scan_count) {
+  uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
+  stm_status_t st = STM_OK;
+
+  if (out_pair == NULL) {
+    return STM_ERR_INVALID_ARG;
+  }
+
+  st = adc1_dual_read_all_average_blocking(sample, scan_count);
+  if (st != STM_OK) {
+    return st;
+  }
+
+  out_pair[ADC1_DUAL_SLOT_PHOTO] = sample[ADC1_DUAL_SLOT_PHOTO];
+  out_pair[ADC1_DUAL_SLOT_THERM] = sample[ADC1_DUAL_SLOT_THERM];
   return STM_OK;
 }

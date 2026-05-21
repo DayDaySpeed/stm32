@@ -191,7 +191,7 @@ stm_status_t thermistor_init(void) {
 }
 
 stm_status_t thermistor_read_raw_blocking(uint16_t *out_raw12) {
-  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U};
+  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
   stm_status_t st = STM_OK;
 
   if (out_raw12 == NULL) {
@@ -212,7 +212,7 @@ stm_status_t thermistor_read_raw_blocking(uint16_t *out_raw12) {
 
 stm_status_t thermistor_read_raw_average_blocking(uint16_t *out_raw12,
                                                   uint8_t sample_count) {
-  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U};
+  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
   stm_status_t st = STM_OK;
 
   if ((out_raw12 == NULL) || (sample_count == 0U)) {

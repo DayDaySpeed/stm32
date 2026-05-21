@@ -217,18 +217,23 @@
 #define ADC_CR1_L_SHIFT     (20U)       /* SQR1.L[3:0]：规则序列长度 - 1 */
 #define ADC_CR1_L_MASK      (0xFU << ADC_CR1_L_SHIFT)
 #define ADC_CR1_L_2_CONV    (1U << ADC_CR1_L_SHIFT) /* L=1 → 共 2 次转换 */
+#define ADC_CR1_L_3_CONV    (2U << ADC_CR1_L_SHIFT) /* L=2 → 共 3 次转换 */
 
 #define ADC_SQR3_SQ1_SHIFT  (0U)
 #define ADC_SQR3_SQ2_SHIFT  (5U)
+#define ADC_SQR3_SQ3_SHIFT  (10U)
 #define ADC_SQR3_SQ_MASK    (0x1FU)
 #define ADC_SQR3_SQ1(ch)    (((uint32_t)(ch) & ADC_SQR3_SQ_MASK) << ADC_SQR3_SQ1_SHIFT)
 #define ADC_SQR3_SQ2(ch)    (((uint32_t)(ch) & ADC_SQR3_SQ_MASK) << ADC_SQR3_SQ2_SHIFT)
+#define ADC_SQR3_SQ3(ch)    (((uint32_t)(ch) & ADC_SQR3_SQ_MASK) << ADC_SQR3_SQ3_SHIFT)
 
 #define ADC_SMPR2_SMP1_SHIFT (3U)
 #define ADC_SMPR2_SMP2_SHIFT (6U)
+#define ADC_SMPR2_SMP3_SHIFT (9U)
 #define ADC_SMPR2_SMP_MASK   (7U)
 #define ADC_SMPR2_SMP1_MAX   (7U << ADC_SMPR2_SMP1_SHIFT)
 #define ADC_SMPR2_SMP2_MAX   (7U << ADC_SMPR2_SMP2_SHIFT)
+#define ADC_SMPR2_SMP3_MAX   (7U << ADC_SMPR2_SMP3_SHIFT)
 
 #define ADC_SR_EOC_BIT      (1U << 1)   /* 规则组转换结束（读 DR 或写 SR 可清） */
 #define ADC_CR2_ADON_BIT    (1U << 0)   /* ADC 上电/使能 */

@@ -54,6 +54,10 @@ stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
                                                   uint16_t *out_therm_raw12,
                                                   uint8_t scan_count);
 
+/* 反射红外（PA3 / ADC1_IN3）平均原始值 0~4095。 */
+stm_status_t bsp_ir_reflect_read_raw_average(uint16_t *out_raw12,
+                                             uint8_t sample_count);
+
 /* 由热敏 ADC 原始值换算温度，单位 0.1 摄氏度（例如 253 = 25.3°C）。 */
 stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
                                                        int16_t *out_celsius_x10);
