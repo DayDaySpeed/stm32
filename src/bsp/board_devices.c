@@ -10,6 +10,7 @@
 #include "drivers/thermistor.h"
 #include "drivers/pwm.h"
 #include "drivers/ssd1306_oled.h"
+#include "hal/i2c1_master.h"
 #include "drivers/usart1.h"
 
 #define BOARD_CONSOLE_BAUDRATE 115200UL
@@ -79,6 +80,11 @@ stm_status_t bsp_console_read_line_try(char *out, uint16_t out_size) {
 void bsp_console_irq_handler(void) { usart1_irq_handler(); }
 
 stm_status_t bsp_display_init(void) { return ssd1306_default_init(); }
+
+stm_status_t bsp_display_recover(void) {
+  i2c1_master_bus_recover();
+  return ssd1306_default_init();
+}
 
 stm_status_t bsp_display_clear(void) { return ssd1306_default_clear(); }
 

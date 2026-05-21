@@ -44,6 +44,9 @@ typedef struct {
  */
 stm_status_t i2c1_master_init(const i2c1_master_config_t *cfg);
 
+/* GPIO 时钟脉冲 + 手动 STOP，用于总线卡死后在 re-init 前释放 SDA/SCL。 */
+void i2c1_master_bus_recover(void);
+
 /*
  * 主机写一帧：
  *   START → 写 7 位地址(W) → 写 ctrl 字节 → 写 payload[0..n-1] → STOP

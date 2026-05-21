@@ -20,6 +20,8 @@ stm_status_t bsp_console_read_line_try(char *out, uint16_t out_size);
 void bsp_console_irq_handler(void);
 
 stm_status_t bsp_display_init(void);
+/* I2C 总线恢复 + SSD1306 重新初始化（OLED 卡死时由 app 调用）。 */
+stm_status_t bsp_display_recover(void);
 stm_status_t bsp_display_clear(void);
 stm_status_t bsp_display_write_text_atf(uint16_t page, uint16_t col_px,
                                         const char *fmt, ...);

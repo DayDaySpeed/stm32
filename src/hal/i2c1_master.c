@@ -26,7 +26,7 @@ static void i2c1_delay_short(void) {
 /*
  * 总线卡死时：关 PE → GPIO 模拟 9 个 SCL 脉冲 → 恢复 AF 开漏 → 再开 PE。
  */
-static void i2c1_bus_recover(void) {
+void i2c1_master_bus_recover(void) {
   I2C1_CR1 &= (uint32_t)~I2C_CR1_PE_BIT;
 
   GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
@@ -40,6 +40,14 @@ static void i2c1_bus_recover(void) {
     GPIOB_BSRR = (1U << I2C1_SCL_PIN);
     i2c1_delay_short();
   }
+
+  /* 从机仍拉低 SDA 时补发 STOP：SCL=1 时 SDA 低→高。 */
+  GPIOB_BSRR = (1U << I2C1_SCL_PIN);
+  i2c1_delay_short();
+  GPIOB_BSRR = (1U << (I2C1_SDA_PIN + 16U));
+  i2c1_delay_short();
+  GPIOB_BSRR = (1U << I2C1_SDA_PIN);
+  i2c1_delay_short();
 
   GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
               BOARD_GPIO_PB8_PB9_AF_OD_50MHZ;
@@ -58,6 +66,7 @@ static stm_status_t i2c1_wait_sr1(uint32_t mask, uint32_t expect) {
       (void)I2C1_SR2;
       I2C1_SR1 &= (uint32_t)~I2C_SR1_AF_BIT;
       I2C1_CR1 |= I2C_CR1_STOP_BIT;
+      i2c1_master_bus_recover();
       return STM_ERR_NACK;
     }
     if ((sr1 & mask) == expect) {
@@ -65,7 +74,7 @@ static stm_status_t i2c1_wait_sr1(uint32_t mask, uint32_t expect) {
     }
   }
   I2C1_CR1 |= I2C_CR1_STOP_BIT;
-  i2c1_bus_recover();
+  i2c1_master_bus_recover();
   return STM_ERR_TIMEOUT;
 }
 
@@ -75,7 +84,7 @@ static stm_status_t i2c1_wait_not_busy(void) {
       return STM_OK;
     }
   }
-  i2c1_bus_recover();
+  i2c1_master_bus_recover();
   return STM_ERR_BUSY;
 }
 

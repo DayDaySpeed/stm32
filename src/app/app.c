@@ -13,6 +13,11 @@
 #define APP_BREATH_PHASE_MAX    (400U)
 /* OLED 调试信息刷新节流：太快会阻塞 CPU 拖慢呼吸；500ms 人眼也跟得上。 */
 #define APP_DEBUG_OLED_PERIOD_MS (500U)
+/* 连续失败达到此次数后触发 I2C+SSD1306 重新初始化（至少间隔 RECOVER_MIN_MS）。 */
+#define APP_OLED_RECOVER_FAIL_STREAK (2U)
+#define APP_OLED_RECOVER_MIN_MS      (1000U)
+/* 电机占空比高于此值时跳过 ADC+热敏行（减轻满速时主循环阻塞）。 */
+#define APP_MOTOR_OLED_SKIP_DUTY    (600U)
 /* 编码器调速：每 20ms 读一次增量并更新电机占空比。 */
 #define APP_MOTOR_PERIOD_MS     (20U)
 /* 旋钮每 1 个计数改变多少千分比占空比；越大越灵敏。 */
@@ -24,6 +29,8 @@ static uint8_t s_time_inited;
 static uint16_t s_phase;
 static uint16_t s_duty_permille;
 static uint32_t s_last_oled_ms;
+static uint8_t s_oled_fail_streak;
+static uint32_t s_oled_last_recover_ms;
 static int16_t s_enc_prev;
 static uint32_t s_last_motor_ms;
 static int16_t s_motor_enc_prev;
@@ -60,16 +67,35 @@ static void app_breath_led_task(uint32_t now_ms) {
   (void)bsp_status_led_set_duty_permille(s_duty_permille);
 }
 
+static void app_oled_note_success(void) { s_oled_fail_streak = 0U; }
+
+static void app_oled_note_failure(void) {
+  if (s_oled_fail_streak < 255U) {
+    s_oled_fail_streak++;
+  }
+}
+
+static stm_status_t app_oled_try_recover(uint32_t now_ms) {
+  if (s_oled_fail_streak < APP_OLED_RECOVER_FAIL_STREAK) {
+    return STM_ERR_IO;
+  }
+  if ((now_ms - s_oled_last_recover_ms) < APP_OLED_RECOVER_MIN_MS) {
+    return STM_ERR_BUSY;
+  }
+  s_oled_last_recover_ms = now_ms;
+  return bsp_display_recover();
+}
+
 /*
  * 编码器调试显示任务：
  * - 读取当前累计计数
  * - 与上次值做差得到近似速度增量
  * - 刷新 OLED 第 0/1/2/3/5 行
  */
-static void app_encoder_oled_task(void) {
+static stm_status_t app_encoder_oled_task(void) {
   int16_t enc_now = 0;
-  int16_t enc_delta = (int16_t)(enc_now - s_enc_prev);
-  char dir_sym = '0';
+  int16_t enc_delta = 0;
+  stm_status_t st = STM_OK;
 
   if (bsp_wheel_encoder_read_count(&enc_now) == STM_OK) {
     enc_delta = (int16_t)(enc_now - s_enc_prev);
@@ -79,14 +105,25 @@ static void app_encoder_oled_task(void) {
     enc_delta = 0;
   }
 
-  dir_sym = (enc_delta > 0) ? '+' : (enc_delta < 0) ? '-' : '0';
-
-  (void)bsp_display_write_text_atf(0U, 0U, "wheel encoder      ");
-  (void)bsp_display_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
-  (void)bsp_display_write_text_atf(5U, 0U, "phase=%u duty=%u  ",
-                                   s_phase, s_duty_permille);
-  (void)bsp_display_write_text_atf(7U, 0U, "MOT=%u/1000      ",
-                                   s_motor_duty_permille);
+  st = bsp_display_write_text_atf(0U, 0U, "wheel encoder      ");
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_display_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_display_write_text_atf(2U, 0U, "dlt = %d        ", enc_delta);
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_display_write_text_atf(5U, 0U, "phase=%u duty=%u  ",
+                                  s_phase, s_duty_permille);
+  if (st != STM_OK) {
+    return st;
+  }
+  return bsp_display_write_text_atf(7U, 0U, "MOT=%u/1000      ",
+                                    s_motor_duty_permille);
 }
 
 /*
@@ -139,16 +176,19 @@ static void app_motor_encoder_task(uint32_t now_ms) {
  * - 第 4 行：光敏原始值与估算电压
  * - 第 6 行：热敏温度（0.1°C）与原始 ADC
  */
-static void app_analog_sensors_oled_task(void) {
+static stm_status_t app_analog_sensors_oled_task(void) {
   uint16_t ldr_raw = 0U;
   uint16_t ntc_raw = 0U;
   stm_status_t st =
       bsp_analog_sensors_read_pair_average(&ldr_raw, &ntc_raw, 4U);
 
   if (st != STM_OK) {
-    (void)bsp_display_write_text_atf(4U, 0U, "ADC err=%d        ", (int32_t)st);
-    (void)bsp_display_write_text_atf(6U, 0U, "NTC err=%d        ", (int32_t)st);
-    return;
+    stm_status_t w = bsp_display_write_text_atf(4U, 0U, "ADC err=%d        ",
+                                                (int32_t)st);
+    if (w != STM_OK) {
+      return w;
+    }
+    return bsp_display_write_text_atf(6U, 0U, "NTC err=%d        ", (int32_t)st);
   }
 
   {
@@ -156,13 +196,16 @@ static void app_analog_sensors_oled_task(void) {
     uint32_t ldr_v_int = ldr_mv / 1000U;
     uint32_t ldr_v_frac = ldr_mv % 1000U;
 
-    (void)bsp_display_write_text_atf(4U, 0U,
-                                     "LDR=%u %u.%u%u%uV ",
-                                     ldr_raw,
-                                     ldr_v_int,
-                                     ldr_v_frac / 100U,
-                                     (ldr_v_frac / 10U) % 10U,
-                                     ldr_v_frac % 10U);
+    st = bsp_display_write_text_atf(4U, 0U,
+                                    "LDR=%u %u.%u%u%uV ",
+                                    ldr_raw,
+                                    ldr_v_int,
+                                    ldr_v_frac / 100U,
+                                    (ldr_v_frac / 10U) % 10U,
+                                    ldr_v_frac % 10U);
+    if (st != STM_OK) {
+      return st;
+    }
   }
 
   {
@@ -171,9 +214,8 @@ static void app_analog_sensors_oled_task(void) {
         bsp_temperature_read_celsius_x10_from_raw(ntc_raw, &temp_x10);
 
     if (temp_st != STM_OK) {
-      (void)bsp_display_write_text_atf(6U, 0U, "NTC err=%d raw=%u ",
-                                       (int32_t)temp_st, ntc_raw);
-      return;
+      return bsp_display_write_text_atf(6U, 0U, "NTC err=%d raw=%u ",
+                                        (int32_t)temp_st, ntc_raw);
     }
 
     {
@@ -182,9 +224,9 @@ static void app_analog_sensors_oled_task(void) {
       int32_t t_int = t_abs / 10;
       int32_t t_frac = t_abs % 10;
 
-      (void)bsp_display_write_text_atf(6U, 0U,
-                                       "NTC=%c%d.%dC raw=%u  ",
-                                       sign, t_int, t_frac, ntc_raw);
+      return bsp_display_write_text_atf(6U, 0U,
+                                          "NTC=%c%d.%dC raw=%u  ",
+                                          sign, t_int, t_frac, ntc_raw);
     }
   }
 }
@@ -201,8 +243,40 @@ static void tasks(void) {
   }
   s_last_oled_ms = now;
 
-  app_encoder_oled_task();
-  app_analog_sensors_oled_task();
+  {
+    stm_status_t st = app_encoder_oled_task();
+
+    if (st != STM_OK) {
+      app_oled_note_failure();
+      if (app_oled_try_recover(now) == STM_OK) {
+        st = app_encoder_oled_task();
+      }
+    }
+    if (st != STM_OK) {
+      return;
+    }
+    app_oled_note_success();
+  }
+
+  if (s_motor_duty_permille > APP_MOTOR_OLED_SKIP_DUTY) {
+    return;
+  }
+
+  {
+    stm_status_t st = app_analog_sensors_oled_task();
+
+    if (st != STM_OK) {
+      app_oled_note_failure();
+      if (app_oled_try_recover(now) == STM_OK) {
+        (void)app_encoder_oled_task();
+        st = app_analog_sensors_oled_task();
+      }
+      if (st != STM_OK) {
+        return;
+      }
+    }
+    app_oled_note_success();
+  }
 }
 
 stm_status_t app_init(void) {
