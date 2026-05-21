@@ -68,6 +68,13 @@ static stm_status_t dc_motor_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_
   return STM_OK;
 }
 
+void dc_motor_gpio_safe_early(void) {
+  RCC_APB2ENR |= RCC_IOPBEN_BIT;
+  GPIOB_CRL = (GPIOB_CRL & ~(BOARD_GPIO_PB6_CRL_MASK | BOARD_GPIO_PB7_CRL_MASK)) |
+              BOARD_GPIO_PB6_OUT_PP_50MHZ | BOARD_GPIO_PB7_OUT_PP_50MHZ;
+  GPIOB_BSRR = (1U << (6U + 16U)) | (1U << (BOARD_TB6612_AIN1_PIN + 16U));
+}
+
 static void dc_motor_gpio_init(void) {
   GPIOB_CRL = (GPIOB_CRL & ~(BOARD_GPIO_PB6_CRL_MASK | BOARD_GPIO_PB7_CRL_MASK)) |
               BOARD_GPIO_PB6_AF_PP_50MHZ | BOARD_GPIO_PB7_OUT_PP_50MHZ;

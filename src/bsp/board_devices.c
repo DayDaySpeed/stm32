@@ -113,6 +113,8 @@ stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction) {
   return tim3_encoder_read_direction(out_direction);
 }
 
+void bsp_dc_motor_gpio_safe_early(void) { dc_motor_gpio_safe_early(); }
+
 stm_status_t bsp_dc_motor_init(void) {
   return dc_motor_init_with_config(&g_board_dc_motor_config);
 }
@@ -175,7 +177,11 @@ stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
 }
 
 stm_status_t bsp_default_devices_init(void) {
-  stm_status_t st = bsp_console_init();
+  stm_status_t st = bsp_dc_motor_init();
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_console_init();
   if (st != STM_OK) {
     return st;
   }
@@ -192,10 +198,6 @@ stm_status_t bsp_default_devices_init(void) {
     return st;
   }
   st = bsp_wheel_encoder_init();
-  if (st != STM_OK) {
-    return st;
-  }
-  st = bsp_dc_motor_init();
   if (st != STM_OK) {
     return st;
   }
