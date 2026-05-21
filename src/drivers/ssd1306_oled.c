@@ -240,7 +240,7 @@ stm_status_t ssd1306_init(ssd1306_t *dev) {
 
   i2c_cfg.pclk1_hz = bsp_clock_get_pclk1_hz();
   i2c_cfg.bus_hz = 100000UL;
-  i2c_cfg.timeout_iter = 100000UL;
+  i2c_cfg.timeout_iter = 0U;
 
   if (i2c1_master_init(&i2c_cfg) != STM_OK) {
     return STM_ERR_IO;

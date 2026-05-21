@@ -83,8 +83,6 @@ static void app_encoder_oled_task(void) {
 
   (void)bsp_display_write_text_atf(0U, 0U, "wheel encoder      ");
   (void)bsp_display_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
-  (void)bsp_display_write_text_atf(2U, 0U, "dlt = %d        ", enc_delta);
-  (void)bsp_display_write_text_atf(3U, 0U, "dir = %c          ", dir_sym);
   (void)bsp_display_write_text_atf(5U, 0U, "phase=%u duty=%u  ",
                                    s_phase, s_duty_permille);
   (void)bsp_display_write_text_atf(7U, 0U, "MOT=%u/1000      ",

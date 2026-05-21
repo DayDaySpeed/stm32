@@ -5,10 +5,46 @@
 #include "bsp/board_pins.h"
 #include "bsp/stm32f103_regs.h"
 
-/* I2C 主机轮询超时上限的默认值（无 SysTick 依赖时回退）。 */
-#define I2C1_MASTER_DEFAULT_TIMEOUT_ITER (100000UL)
+/*
+ * 轮询超时上限（循环次数，非毫秒）。
+ * 72MHz 下约 1ms/次等待；SSD1306 失败时应快速返回，避免拖死主循环。
+ */
+#define I2C1_MASTER_DEFAULT_TIMEOUT_ITER (3000UL)
+
+#define I2C1_SCL_PIN (8U)
+#define I2C1_SDA_PIN (9U)
+/* PB8/PB9 作 GPIO 开漏输出 50MHz（CNF=01 MODE=11 -> 0x7/引脚） */
+#define I2C1_GPIO_PB8_PB9_OD_OUT_50MHZ (0x00000077UL)
 
 static uint32_t g_timeout_iter = I2C1_MASTER_DEFAULT_TIMEOUT_ITER;
+
+static void i2c1_delay_short(void) {
+  for (volatile uint32_t d = 0U; d < 64U; ++d) {
+  }
+}
+
+/*
+ * 总线卡死时：关 PE → GPIO 模拟 9 个 SCL 脉冲 → 恢复 AF 开漏 → 再开 PE。
+ */
+static void i2c1_bus_recover(void) {
+  I2C1_CR1 &= (uint32_t)~I2C_CR1_PE_BIT;
+
+  GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
+              I2C1_GPIO_PB8_PB9_OD_OUT_50MHZ;
+  GPIOB_BSRR = (1U << I2C1_SCL_PIN) | (1U << I2C1_SDA_PIN);
+  i2c1_delay_short();
+
+  for (uint8_t pulse = 0U; pulse < 9U; pulse++) {
+    GPIOB_BSRR = (1U << (I2C1_SCL_PIN + 16U));
+    i2c1_delay_short();
+    GPIOB_BSRR = (1U << I2C1_SCL_PIN);
+    i2c1_delay_short();
+  }
+
+  GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
+              BOARD_GPIO_PB8_PB9_AF_OD_50MHZ;
+  I2C1_CR1 |= I2C_CR1_PE_BIT;
+}
 
 /*
  * 等待 SR1 的 mask 字段达到 expect 值；同时拦截 NACK（AF=1）。
@@ -29,6 +65,7 @@ static stm_status_t i2c1_wait_sr1(uint32_t mask, uint32_t expect) {
     }
   }
   I2C1_CR1 |= I2C_CR1_STOP_BIT;
+  i2c1_bus_recover();
   return STM_ERR_TIMEOUT;
 }
 
@@ -38,6 +75,7 @@ static stm_status_t i2c1_wait_not_busy(void) {
       return STM_OK;
     }
   }
+  i2c1_bus_recover();
   return STM_ERR_BUSY;
 }
 

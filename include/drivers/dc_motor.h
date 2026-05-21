@@ -17,7 +17,12 @@
  *   AIN1=0 → 停；AIN1=1 + PWMA>0 → 单方向转
  *
  * 前置：bsp_clock_apply_profile()、bsp_board_init()
+ *
+ * dc_motor_gpio_safe_early()：在 TIM4/完整 init 之前把 PB6/PB7 拉低；
+ * 应在 bsp_board_init() 之后、其它外设 init 之前调用（见 main.c）。
  */
+
+void dc_motor_gpio_safe_early(void);
 
 typedef struct {
   uint32_t pwm_hz;

@@ -46,6 +46,8 @@
 #define BOARD_GPIO_PB6_CRL_POS          (24U)
 #define BOARD_GPIO_PB6_CRL_MASK         (BOARD_GPIO_CRL_PIN_FIELD_MASK << BOARD_GPIO_PB6_CRL_POS)
 #define BOARD_GPIO_PB6_AF_PP_50MHZ      (0xBU << BOARD_GPIO_PB6_CRL_POS)
+/* 上电早期：PB6 先作推挽输出低，避免接 TB6612 时浮空误触发 */
+#define BOARD_GPIO_PB6_OUT_PP_50MHZ     (0x3U << BOARD_GPIO_PB6_CRL_POS)
 
 /* PB7 = TB6612 AIN1（推挽输出 50MHz -> 0x3） */
 #define BOARD_GPIO_PB7_CRL_POS          (28U)

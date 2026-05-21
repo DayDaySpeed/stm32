@@ -18,6 +18,7 @@ int main(void) {
     stm_fault_halt("clock", st);
   }
   bsp_board_init();
+  bsp_dc_motor_gpio_safe_early();
   st = app_init();
   if (st != STM_OK) {
     stm_fault_halt("app_init", st);
