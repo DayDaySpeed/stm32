@@ -8,8 +8,8 @@
 /*
  * 有源蜂鸣器（电平驱动，非 PWM 音调）
  *
- * 本板默认：PA4 推挽输出，高电平响（BOARD_BUZZER_ACTIVE_HIGH=1）。
- * 部分模块低电平响，在 board_config.h 里把 ACTIVE_HIGH 改为 0。
+ * 本板默认：PA4 推挽输出，低电平响（BOARD_BUZZER_ACTIVE_HIGH=0，常见三脚模块）。
+ * 上电一直叫 → 在 board_config.h 把 ACTIVE_HIGH 改为 1 试一次。
  *
  * 前置：bsp_board_init()（GPIOA 时钟）。
  */

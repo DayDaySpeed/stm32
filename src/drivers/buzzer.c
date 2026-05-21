@@ -41,7 +41,7 @@ stm_status_t buzzer_init_with_config(const buzzer_config_t *config) {
 }
 
 stm_status_t buzzer_init(void) {
-  const buzzer_config_t config = {.active_high = 1U};
+  const buzzer_config_t config = {.active_high = 0U};
   return buzzer_init_with_config(&config);
 }
 
