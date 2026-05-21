@@ -48,6 +48,16 @@
 
 #define BOARD_USART1_GPIO_CRH_REG       GPIOA_CRH
 
+/* PA8 = TIM1_CH1（光敏 LDR 指示灯 PWM；复用推挽 50MHz -> 0xB） */
+#define BOARD_GPIO_PA8_CRH_POS          (0U)
+#define BOARD_GPIO_PA8_CRH_MASK         (BOARD_GPIO_CRH_PIN_FIELD_MASK << BOARD_GPIO_PA8_CRH_POS)
+#define BOARD_GPIO_PA8_AF_PP_50MHZ      (0xBU << BOARD_GPIO_PA8_CRH_POS)
+
+/* PA11 = TIM1_CH4（热敏 NTC 指示灯 PWM；复用推挽 50MHz -> 0xB） */
+#define BOARD_GPIO_PA11_CRH_POS         (12U)
+#define BOARD_GPIO_PA11_CRH_MASK        (BOARD_GPIO_CRH_PIN_FIELD_MASK << BOARD_GPIO_PA11_CRH_POS)
+#define BOARD_GPIO_PA11_AF_PP_50MHZ     (0xBU << BOARD_GPIO_PA11_CRH_POS)
+
 /* PB8/PB9 = I2C1_SCL/I2C1_SDA（重映射后；复用开漏输出 50MHz，CNF=11、MODE=11 -> 0xF）。
  * PB8 占 CRH[3:0]，PB9 占 CRH[7:4]，所以两个引脚组合掩码是 0x000000FF。 */
 #define BOARD_GPIO_PB8_PB9_CRH_MASK     (0x000000FFUL)
@@ -60,12 +70,20 @@
 /* 上电早期：PB6 先作推挽输出低，避免接 TB6612 时浮空误触发 */
 #define BOARD_GPIO_PB6_OUT_PP_50MHZ     (0x3U << BOARD_GPIO_PB6_CRL_POS)
 
+/* PB5 = TB6612 AIN2（推挽输出；与 AIN1 组合决定 AO1/AO2 方向） */
+#define BOARD_GPIO_PB5_CRL_POS          (20U)
+#define BOARD_GPIO_PB5_CRL_MASK         (BOARD_GPIO_CRL_PIN_FIELD_MASK << BOARD_GPIO_PB5_CRL_POS)
+#define BOARD_GPIO_PB5_OUT_PP_50MHZ     (0x3U << BOARD_GPIO_PB5_CRL_POS)
+
 /* PB7 = TB6612 AIN1（推挽输出 50MHz -> 0x3） */
 #define BOARD_GPIO_PB7_CRL_POS          (28U)
 #define BOARD_GPIO_PB7_CRL_MASK         (BOARD_GPIO_CRL_PIN_FIELD_MASK << BOARD_GPIO_PB7_CRL_POS)
 #define BOARD_GPIO_PB7_OUT_PP_50MHZ     (0x3U << BOARD_GPIO_PB7_CRL_POS)
 
 #define BOARD_TB6612_AIN1_PIN           (7U)
+#define BOARD_TB6612_AIN2_PIN           (5U)
+#define BOARD_TB6612_PWM_GPIO_MASK      (BOARD_GPIO_PB6_CRL_MASK | BOARD_GPIO_PB5_CRL_MASK | \
+                                         BOARD_GPIO_PB7_CRL_MASK)
 
 /* PA6/PA7 = TIM3_CH1/CH2（编码器 A/B 输入；带上拉浮空也能用，但带上拉更抗噪）。
  *   CNF=10（输入带上拉/下拉），MODE=00（输入）-> 4 bit 值 0x8。

@@ -9,6 +9,7 @@
 #include "drivers/photoresistor.h"
 #include "bsp/board_config.h"
 #include "drivers/buzzer.h"
+#include "drivers/sensor_led.h"
 #include "drivers/ir_reflect.h"
 #include "drivers/thermistor.h"
 #include "drivers/pwm.h"
@@ -38,7 +39,7 @@ static const tim3_encoder_config_t g_board_wheel_encoder_config = {
 
 static const dc_motor_config_t g_board_dc_motor_config = {
     .pwm_hz = BOARD_DC_MOTOR_PWM_HZ,
-    .duty_permille = 0U,
+    .speed_permille = 0,
 };
 
 static const adc1_dual_config_t g_board_adc_dual_config = {
@@ -66,6 +67,10 @@ static const ir_reflect_config_t g_board_ir_reflect_config = {
 
 static const buzzer_config_t g_board_buzzer_config = {
     .active_high = BOARD_BUZZER_ACTIVE_HIGH,
+};
+
+static const sensor_led_config_t g_board_sensor_led_config = {
+    .pwm_hz = BOARD_SENSOR_LED_PWM_HZ,
 };
 
 stm_status_t bsp_console_init(void) {
@@ -137,12 +142,39 @@ stm_status_t bsp_dc_motor_init(void) {
   return dc_motor_init_with_config(&g_board_dc_motor_config);
 }
 
+stm_status_t bsp_dc_motor_set_speed_signed(int16_t speed_permille) {
+#if (BOARD_MOTOR_REVERSE_SIGN != 0U)
+  speed_permille = (int16_t)(-speed_permille);
+#endif
+  return dc_motor_set_speed_signed(speed_permille);
+}
+
+stm_status_t bsp_dc_motor_get_speed_signed(int16_t *out_speed_permille) {
+  stm_status_t st = dc_motor_get_speed_signed(out_speed_permille);
+  if (st != STM_OK) {
+    return st;
+  }
+#if (BOARD_MOTOR_REVERSE_SIGN != 0U)
+  *out_speed_permille = (int16_t)(-*out_speed_permille);
+#endif
+  return STM_OK;
+}
+
 stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille) {
-  return dc_motor_set_duty_permille(duty_permille);
+  return bsp_dc_motor_set_speed_signed((int16_t)duty_permille);
 }
 
 stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille) {
-  return dc_motor_get_duty_permille(out_duty_permille);
+  int16_t speed = 0;
+  stm_status_t st = bsp_dc_motor_get_speed_signed(&speed);
+  if (st != STM_OK) {
+    return st;
+  }
+  if (speed < 0) {
+    return STM_ERR_INVALID_ARG;
+  }
+  *out_duty_permille = (uint16_t)speed;
+  return STM_OK;
 }
 
 stm_status_t bsp_dc_motor_stop(void) { return dc_motor_stop(); }
@@ -174,6 +206,48 @@ stm_status_t bsp_buzzer_init(void) {
 
 stm_status_t bsp_buzzer_beep_blocking(uint32_t duration_ms) {
   return buzzer_beep_blocking(duration_ms);
+}
+
+stm_status_t bsp_sensor_led_init(void) {
+  return sensor_led_init_with_config(&g_board_sensor_led_config);
+}
+
+stm_status_t bsp_sensor_led_update_from_sensors(void) {
+  uint16_t ldr_raw = 0U;
+  uint16_t ntc_raw = 0U;
+  int16_t temp_x10 = 0;
+  uint16_t ldr_permille = 0U;
+  uint16_t ntc_permille = 0U;
+  stm_status_t st;
+
+  st = bsp_analog_sensors_read_pair_average(&ldr_raw, &ntc_raw, 2U);
+  if (st != STM_OK) {
+    return st;
+  }
+
+  ldr_permille = (uint16_t)(((uint32_t)ldr_raw * 1000U + 2047U) / 4095U);
+
+  st = bsp_temperature_read_celsius_x10_from_raw(ntc_raw, &temp_x10);
+  if (st != STM_OK) {
+    return st;
+  }
+  if (temp_x10 < 0) {
+    temp_x10 = 0;
+  }
+  {
+    uint32_t t = (uint32_t)(uint16_t)temp_x10;
+    if (t >= BOARD_NTC_LED_FULL_TEMP_X10) {
+      ntc_permille = 1000U;
+    } else {
+      ntc_permille = (uint16_t)((t * 1000U) / BOARD_NTC_LED_FULL_TEMP_X10);
+    }
+  }
+
+  st = sensor_led_set_ldr_permille(ldr_permille);
+  if (st != STM_OK) {
+    return st;
+  }
+  return sensor_led_set_ntc_permille(ntc_permille);
 }
 
 stm_status_t bsp_ambient_light_init(void) {
@@ -240,5 +314,9 @@ stm_status_t bsp_default_devices_init(void) {
   if (st != STM_OK) {
     return st;
   }
-  return bsp_buzzer_init();
+  st = bsp_buzzer_init();
+  if (st != STM_OK) {
+    return st;
+  }
+  return bsp_sensor_led_init();
 }

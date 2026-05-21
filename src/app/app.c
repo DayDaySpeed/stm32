@@ -25,6 +25,8 @@
 #define APP_MOTOR_ENC_STEP      (8U)
 /* 红外靠近检测周期（毫秒）。 */
 #define APP_IR_CHECK_PERIOD_MS  (80U)
+/* 光敏/热敏 指示 LED 刷新周期 */
+#define APP_SENSOR_LED_PERIOD_MS (100U)
 
 /* 这些静态状态由任务函数共享，但不暴露到文件外。 */
 static uint32_t s_last_step_ms;
@@ -36,7 +38,7 @@ static uint8_t s_oled_fail_streak;
 static uint32_t s_oled_last_recover_ms;
 static uint32_t s_last_motor_ms;
 static int16_t s_motor_enc_prev;
-static uint16_t s_motor_duty_permille;
+static int16_t s_motor_speed_permille;
 static uint8_t s_hand_near;
 static uint8_t s_ir_proximity_armed;
 static uint8_t s_ir_near_streak;
@@ -44,6 +46,7 @@ static uint8_t s_ir_leave_streak;
 static uint8_t s_ir_arm_streak;
 static uint32_t s_last_ir_check_ms;
 static uint32_t s_ir_beep_cooldown_until_ms;
+static uint32_t s_last_sensor_led_ms;
 
 /*
  * 本板红外：远离 ~4000，靠近 ~100 → raw 低为靠近。
@@ -176,8 +179,8 @@ static stm_status_t app_encoder_oled_task(void) {
   if (st != STM_OK) {
     return st;
   }
-  st = bsp_display_write_text_atf(1U, 0U, "MOT=%u/1000       ",
-                                  s_motor_duty_permille);
+  st = bsp_display_write_text_atf(1U, 0U, "MOT=%d/1000       ",
+                                  (int32_t)s_motor_speed_permille);
   if (st != STM_OK) {
     return st;
   }
@@ -186,18 +189,17 @@ static stm_status_t app_encoder_oled_task(void) {
 }
 
 /*
- * 旋钮调速任务（AIN2 接 GND：仅停/单方向转）：
- * - 顺时针增量 -> 提高电机占空比
- * - 逆时针增量 -> 降低占空比（到 0 停）
+ * 旋钮调速：AIN1/PB7 + AIN2/PB5 控制正反转，PWMA/PB6 为速度。
+ * 顺时针增速度、逆时针减；可过 0 换向（-1000..+1000）。
  */
 static void app_motor_encoder_task(uint32_t now_ms) {
   int16_t enc_now = 0;
   int16_t enc_delta = 0;
-  int32_t next_duty = 0;
+  int32_t next_speed = 0;
 
   if (s_last_motor_ms == 0U) {
     s_last_motor_ms = now_ms;
-    s_motor_duty_permille = 0U;
+    s_motor_speed_permille = 0;
     if (bsp_wheel_encoder_read_count(&enc_now) == STM_OK) {
       s_motor_enc_prev = enc_now;
     }
@@ -219,15 +221,15 @@ static void app_motor_encoder_task(uint32_t now_ms) {
     return;
   }
 
-  next_duty = (int32_t)s_motor_duty_permille + (int32_t)enc_delta * APP_MOTOR_ENC_STEP;
-  if (next_duty < 0) {
-    next_duty = 0;
-  } else if (next_duty > 1000) {
-    next_duty = 1000;
+  next_speed = (int32_t)s_motor_speed_permille + (int32_t)enc_delta * APP_MOTOR_ENC_STEP;
+  if (next_speed < -1000) {
+    next_speed = -1000;
+  } else if (next_speed > 1000) {
+    next_speed = 1000;
   }
 
-  s_motor_duty_permille = (uint16_t)next_duty;
-  (void)bsp_dc_motor_set_speed_permille(s_motor_duty_permille);
+  s_motor_speed_permille = (int16_t)next_speed;
+  (void)bsp_dc_motor_set_speed_signed(s_motor_speed_permille);
 }
 
 /*
@@ -311,6 +313,11 @@ static void tasks(void) {
   app_motor_encoder_task(now);
   app_ir_proximity_buzzer_task(now);
 
+  if ((uint32_t)(now - s_last_sensor_led_ms) >= APP_SENSOR_LED_PERIOD_MS) {
+    s_last_sensor_led_ms = now;
+    (void)bsp_sensor_led_update_from_sensors();
+  }
+
   if ((uint32_t)(now - s_last_oled_ms) < APP_DEBUG_OLED_PERIOD_MS) {
     return;
   }
@@ -331,8 +338,14 @@ static void tasks(void) {
     app_oled_note_success();
   }
 
-  if (s_motor_duty_permille > APP_MOTOR_OLED_SKIP_DUTY) {
-    return;
+  {
+    int16_t mot_abs = s_motor_speed_permille;
+    if (mot_abs < 0) {
+      mot_abs = (int16_t)(-mot_abs);
+    }
+    if ((uint16_t)mot_abs > APP_MOTOR_OLED_SKIP_DUTY) {
+      return;
+    }
   }
 
   {

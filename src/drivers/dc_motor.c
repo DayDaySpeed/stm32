@@ -1,5 +1,5 @@
 /*
- * TB6612 + 有刷直流电机（TIM4_CH1/PB6 PWM，PB7=AIN1，AIN2 接 GND）
+ * TB6612 + 有刷直流电机（PB6=PWM，PB7=AIN1，PB5=AIN2 → AO1/AO2 可正反转）
  */
 
 #include "drivers/dc_motor.h"
@@ -12,13 +12,13 @@
 #include <stdint.h>
 
 #define DC_MOTOR_PWM_HZ_DEFAULT     (10000UL)
-#define DC_MOTOR_DUTY_MAX           (1000U)
+#define DC_MOTOR_SPEED_MAX          (1000)
 
 static uint32_t g_ticks_per_period;
-static uint16_t g_duty_permille;
+static int16_t g_speed_permille;
 
-static stm_status_t dc_motor_validate_duty(uint16_t duty_permille) {
-  if (duty_permille > DC_MOTOR_DUTY_MAX) {
+static stm_status_t dc_motor_validate_speed(int16_t speed_permille) {
+  if ((speed_permille < -DC_MOTOR_SPEED_MAX) || (speed_permille > DC_MOTOR_SPEED_MAX)) {
     return STM_ERR_INVALID_ARG;
   }
   return STM_OK;
@@ -26,7 +26,7 @@ static stm_status_t dc_motor_validate_duty(uint16_t duty_permille) {
 
 static uint32_t dc_motor_duty_to_ccr1(uint16_t duty_permille,
                                       uint32_t ticks_per_period) {
-  return ((uint32_t)duty_permille * ticks_per_period + 500U) / DC_MOTOR_DUTY_MAX;
+  return ((uint32_t)duty_permille * ticks_per_period + 500U) / DC_MOTOR_SPEED_MAX;
 }
 
 static uint32_t dc_motor_tim4_input_clock_hz(void) {
@@ -68,35 +68,67 @@ static stm_status_t dc_motor_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_
   return STM_OK;
 }
 
+static void dc_motor_set_ain1(uint8_t level) {
+  if (level != 0U) {
+    GPIOB_BSRR = (1U << BOARD_TB6612_AIN1_PIN);
+  } else {
+    GPIOB_BSRR = (1U << (BOARD_TB6612_AIN1_PIN + 16U));
+  }
+}
+
+static void dc_motor_set_ain2(uint8_t level) {
+  if (level != 0U) {
+    GPIOB_BSRR = (1U << BOARD_TB6612_AIN2_PIN);
+  } else {
+    GPIOB_BSRR = (1U << (BOARD_TB6612_AIN2_PIN + 16U));
+  }
+}
+
 void dc_motor_gpio_safe_early(void) {
   RCC_APB2ENR |= RCC_IOPBEN_BIT;
-  GPIOB_CRL = (GPIOB_CRL & ~(BOARD_GPIO_PB6_CRL_MASK | BOARD_GPIO_PB7_CRL_MASK)) |
-              BOARD_GPIO_PB6_OUT_PP_50MHZ | BOARD_GPIO_PB7_OUT_PP_50MHZ;
-  GPIOB_BSRR = (1U << (6U + 16U)) | (1U << (BOARD_TB6612_AIN1_PIN + 16U));
+  GPIOB_CRL = (GPIOB_CRL & ~BOARD_TB6612_PWM_GPIO_MASK) |
+              BOARD_GPIO_PB6_OUT_PP_50MHZ | BOARD_GPIO_PB5_OUT_PP_50MHZ |
+              BOARD_GPIO_PB7_OUT_PP_50MHZ;
+  GPIOB_BSRR = (1U << (6U + 16U)) | (1U << (BOARD_TB6612_AIN1_PIN + 16U)) |
+               (1U << (BOARD_TB6612_AIN2_PIN + 16U));
 }
 
 static void dc_motor_gpio_init(void) {
-  GPIOB_CRL = (GPIOB_CRL & ~(BOARD_GPIO_PB6_CRL_MASK | BOARD_GPIO_PB7_CRL_MASK)) |
-              BOARD_GPIO_PB6_AF_PP_50MHZ | BOARD_GPIO_PB7_OUT_PP_50MHZ;
-  GPIOB_BSRR = (1U << (BOARD_TB6612_AIN1_PIN + 16U));
+  GPIOB_CRL = (GPIOB_CRL & ~BOARD_TB6612_PWM_GPIO_MASK) |
+              BOARD_GPIO_PB6_AF_PP_50MHZ | BOARD_GPIO_PB5_OUT_PP_50MHZ |
+              BOARD_GPIO_PB7_OUT_PP_50MHZ;
+  dc_motor_set_ain1(0U);
+  dc_motor_set_ain2(0U);
 }
 
-static void dc_motor_apply_tb6612_outputs(uint16_t duty_permille) {
-  if (duty_permille == 0U) {
-    GPIOB_BSRR = (1U << (BOARD_TB6612_AIN1_PIN + 16U));
+static void dc_motor_apply_tb6612_outputs(int16_t speed_permille) {
+  if (speed_permille == 0) {
+    dc_motor_set_ain1(0U);
+    dc_motor_set_ain2(0U);
     if (g_ticks_per_period != 0U) {
       TIM4_CCR1 = 0U;
     }
     return;
   }
 
-  GPIOB_BSRR = (1U << BOARD_TB6612_AIN1_PIN);
-  if (g_ticks_per_period != 0U) {
-    TIM4_CCR1 = dc_motor_duty_to_ccr1(duty_permille, g_ticks_per_period);
+  {
+    uint16_t duty = (uint16_t)(speed_permille > 0 ? speed_permille : -speed_permille);
+
+    if (speed_permille > 0) {
+      dc_motor_set_ain1(1U);
+      dc_motor_set_ain2(0U);
+    } else {
+      dc_motor_set_ain1(0U);
+      dc_motor_set_ain2(1U);
+    }
+
+    if (g_ticks_per_period != 0U) {
+      TIM4_CCR1 = dc_motor_duty_to_ccr1(duty, g_ticks_per_period);
+    }
   }
 }
 
-static void dc_motor_tim4_apply_hw(uint16_t psc, uint16_t arr, uint16_t duty_permille) {
+static void dc_motor_tim4_apply_hw(uint16_t psc, uint16_t arr, int16_t speed_permille) {
   uint32_t ticks = (uint32_t)arr + 1U;
 
   TIM4_CR1 &= ~TIM_CR1_CEN_BIT;
@@ -113,7 +145,7 @@ static void dc_motor_tim4_apply_hw(uint16_t psc, uint16_t arr, uint16_t duty_per
   TIM4_CR1 |= TIM_CR1_ARPE_BIT;
 
   g_ticks_per_period = ticks;
-  dc_motor_apply_tb6612_outputs(duty_permille);
+  dc_motor_apply_tb6612_outputs(speed_permille);
 
   TIM4_EGR = TIM_EGR_UG_BIT;
   TIM4_SR = ~TIM_SR_UIF_BIT;
@@ -133,7 +165,7 @@ stm_status_t dc_motor_init_with_config(const dc_motor_config_t *config) {
     return STM_ERR_INVALID_ARG;
   }
 
-  st = dc_motor_validate_duty(config->duty_permille);
+  st = dc_motor_validate_speed(config->speed_permille);
   if (st != STM_OK) {
     return st;
   }
@@ -145,21 +177,21 @@ stm_status_t dc_motor_init_with_config(const dc_motor_config_t *config) {
   }
 
   dc_motor_gpio_init();
-  dc_motor_tim4_apply_hw(psc, arr, config->duty_permille);
-  g_duty_permille = config->duty_permille;
+  dc_motor_tim4_apply_hw(psc, arr, config->speed_permille);
+  g_speed_permille = config->speed_permille;
   return STM_OK;
 }
 
 stm_status_t dc_motor_init(void) {
   const dc_motor_config_t config = {
       .pwm_hz = DC_MOTOR_PWM_HZ_DEFAULT,
-      .duty_permille = 0U,
+      .speed_permille = 0,
   };
   return dc_motor_init_with_config(&config);
 }
 
-stm_status_t dc_motor_set_duty_permille(uint16_t duty_permille) {
-  stm_status_t st = dc_motor_validate_duty(duty_permille);
+stm_status_t dc_motor_set_speed_signed(int16_t speed_permille) {
+  stm_status_t st = dc_motor_validate_speed(speed_permille);
   if (st != STM_OK) {
     return st;
   }
@@ -167,23 +199,28 @@ stm_status_t dc_motor_set_duty_permille(uint16_t duty_permille) {
     return STM_ERR_NOT_INITIALIZED;
   }
 
-  g_duty_permille = duty_permille;
-  dc_motor_apply_tb6612_outputs(duty_permille);
+  g_speed_permille = speed_permille;
+  dc_motor_apply_tb6612_outputs(speed_permille);
   return STM_OK;
 }
 
-stm_status_t dc_motor_get_duty_permille(uint16_t *out_duty_permille) {
-  if (out_duty_permille == NULL) {
+stm_status_t dc_motor_get_speed_signed(int16_t *out_speed_permille) {
+  if (out_speed_permille == NULL) {
     return STM_ERR_INVALID_ARG;
   }
   if (g_ticks_per_period == 0U) {
     return STM_ERR_NOT_INITIALIZED;
   }
 
-  *out_duty_permille = g_duty_permille;
+  *out_speed_permille = g_speed_permille;
   return STM_OK;
 }
 
-stm_status_t dc_motor_stop(void) {
-  return dc_motor_set_duty_permille(0U);
+stm_status_t dc_motor_set_duty_permille(uint16_t duty_permille) {
+  if (duty_permille > DC_MOTOR_SPEED_MAX) {
+    return STM_ERR_INVALID_ARG;
+  }
+  return dc_motor_set_speed_signed((int16_t)duty_permille);
 }
+
+stm_status_t dc_motor_stop(void) { return dc_motor_set_speed_signed(0); }

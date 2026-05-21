@@ -12,7 +12,13 @@
  *
  * 也可对调编码器 A/B 接线（PA6↔PA7），效果与 INVERTED 类似。
  */
-#define BOARD_WHEEL_ENCODER_DIRECTION TIM3_ENCODER_DIR_INVERTED
+#define BOARD_WHEEL_ENCODER_DIRECTION TIM3_ENCODER_DIR_NORMAL
+
+/*
+ * 电机正反转与编码器：若顺时针应反转，改为 1。
+ * 仅交换 TB6612 AIN1/AIN2 语义，不改 AO1/AO2 接线。
+ */
+#define BOARD_MOTOR_REVERSE_SIGN      (0U)
 
 /*
  * 有源蜂鸣器触发极性（三脚模块 VCC/GND/S）：
@@ -41,5 +47,10 @@
 /* 上电后须先见到「远离」读数，才允许靠近鸣叫（避免启动误响） */
 #define BOARD_IR_ARM_RAW_HIGH         (3000U)
 #define BOARD_IR_ARM_STREAK_COUNT     (5U)
+
+/* 传感器指示 LED（TIM1 PWM 1kHz） */
+#define BOARD_SENSOR_LED_PWM_HZ       (1000UL)
+/* NTC 灯满亮度对应温度（0.1°C，500=50.0°C） */
+#define BOARD_NTC_LED_FULL_TEMP_X10   (500)
 
 #endif

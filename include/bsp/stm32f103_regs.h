@@ -23,6 +23,7 @@
 #define RCC_IOPBEN_BIT      (1U << 3)  /* GPIOB 时钟使能（APB2ENR） */
 #define RCC_IOPCEN_BIT      (1U << 4)  /* GPIOC 时钟使能（APB2ENR） */
 #define RCC_USART1EN_BIT    (1U << 14) /* USART1 时钟使能（APB2ENR） */
+#define RCC_TIM1EN_BIT      (1U << 11) /* TIM1 时钟使能（APB2ENR） */
 #define RCC_ADC1EN_BIT      (1U << 9)  /* ADC1 时钟使能（APB2ENR） */
 
 #define RCC_CR_HSION_BIT    (1U << 0)  /* HSI 时钟开关 */
@@ -126,6 +127,29 @@
 #define I2C_SR1_AF_BIT      (1U << 10)  /* 应答失败（Acknowledge Failure，常见于收到 NACK） */
 
 #define I2C_SR2_BUSY_BIT    (1U << 1)   /* 总线忙：检测 START 到 STOP 之间的总线占用状态 */
+
+/* TIM1（高级定时器1）：PA8=CH1、PA11=CH4，用于光敏/热敏指示灯 PWM；须置 BDTR.MOE */
+#define TIM1_BASE           (0x40012C00UL)
+#define TIM1_CR1            (*(volatile uint32_t *)(TIM1_BASE + 0x00UL))
+#define TIM1_DIER           (*(volatile uint32_t *)(TIM1_BASE + 0x0CUL))
+#define TIM1_SR             (*(volatile uint32_t *)(TIM1_BASE + 0x10UL))
+#define TIM1_EGR            (*(volatile uint32_t *)(TIM1_BASE + 0x14UL))
+#define TIM1_CCMR1          (*(volatile uint32_t *)(TIM1_BASE + 0x18UL))
+#define TIM1_CCMR2          (*(volatile uint32_t *)(TIM1_BASE + 0x1CUL))
+#define TIM1_CCER           (*(volatile uint32_t *)(TIM1_BASE + 0x20UL))
+#define TIM1_CNT            (*(volatile uint32_t *)(TIM1_BASE + 0x24UL))
+#define TIM1_PSC            (*(volatile uint32_t *)(TIM1_BASE + 0x28UL))
+#define TIM1_ARR            (*(volatile uint32_t *)(TIM1_BASE + 0x2CUL))
+#define TIM1_CCR1           (*(volatile uint32_t *)(TIM1_BASE + 0x34UL))
+#define TIM1_CCR4           (*(volatile uint32_t *)(TIM1_BASE + 0x40UL))
+#define TIM1_BDTR           (*(volatile uint32_t *)(TIM1_BASE + 0x44UL))
+#define TIM_BDTR_MOE_BIT    (1U << 15) /* 主输出使能（TIM1 必须，否则 CHx 无波形） */
+
+#define TIM_CCMR2_OC4PE_BIT (1U << 11)
+#define TIM_CCMR2_OC4M_MASK (7U << 12)
+#define TIM_CCMR2_OC4M_PWM1 (6U << 12)
+#define TIM_CCER_CC4E_BIT   (1U << 12)
+#define TIM_CCER_CC4P_BIT   (1U << 13)
 
 /* TIM2（通用定时器2，General-purpose Timer 2）：负责计时、更新中断、输入捕获与输出比较等定时功能 */
 #define TIM2_BASE           (0x40000000UL) /* TIM2 基地址 */

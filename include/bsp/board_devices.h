@@ -35,6 +35,8 @@ stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction);
 
 void bsp_dc_motor_gpio_safe_early(void);
 stm_status_t bsp_dc_motor_init(void);
+stm_status_t bsp_dc_motor_set_speed_signed(int16_t speed_permille);
+stm_status_t bsp_dc_motor_get_speed_signed(int16_t *out_speed_permille);
 stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille);
 stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille);
 stm_status_t bsp_dc_motor_stop(void);
@@ -60,6 +62,9 @@ stm_status_t bsp_ir_reflect_read_raw_average(uint16_t *out_raw12,
 
 stm_status_t bsp_buzzer_init(void);
 stm_status_t bsp_buzzer_beep_blocking(uint32_t duration_ms);
+
+stm_status_t bsp_sensor_led_init(void);
+stm_status_t bsp_sensor_led_update_from_sensors(void);
 
 /* 由热敏 ADC 原始值换算温度，单位 0.1 摄氏度（例如 253 = 25.3°C）。 */
 stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
