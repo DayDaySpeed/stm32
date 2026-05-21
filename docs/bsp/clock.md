@@ -3,7 +3,7 @@
 本工程时钟分两层：
 
 - **BSP API**（本文）：`bsp/clock.h` — profile 切换与频率查询  
-- **原理专题**（推荐阅读）：根目录 [clock.md](../../clock.md) — 时钟树、RCC/FLASH/SysTick/TIM 寄存器细节
+- **原理专题**（推荐阅读）：[topics/clock.md](../topics/clock.md) — 时钟树、RCC/FLASH/SysTick/TIM 寄存器细节
 
 ---
 
@@ -116,6 +116,6 @@ bsp_board_init()            // 再开外设时钟门控（rcc_board.h 掩码）
 
 ## 延伸阅读
 
-- [clock.md](../../clock.md) — 完整时钟树、寄存器逐步配置、排障  
+- [topics/clock.md](../topics/clock.md) — 完整时钟树、寄存器逐步配置、排障  
 - [bsp/README.md](./README.md) — 上电 init 顺序  
 - [drivers/systick.md](../drivers/systick.md) — 毫秒节拍

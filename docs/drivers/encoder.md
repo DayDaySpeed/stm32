@@ -13,7 +13,7 @@
 | 方向默认值 | `BOARD_WHEEL_ENCODER_DIRECTION`（`board_config.h`） |
 | 前置 | `bsp_clock_apply_profile()` → `bsp_board_init()` |
 
-寄存器细节见根目录 [encoder.md](../../encoder.md)。
+寄存器细节见 [topics/encoder.md](../topics/encoder.md)。
 
 ## 配置与方向
 

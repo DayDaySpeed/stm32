@@ -74,7 +74,7 @@ i2c1_master_write_frame(0x3CU, 0x00U, cmd, 1U);
 
 SSD1306 默认在 `ssd1306_default_init` 内部完成 I2C init。
 
-协议与 SSD1306 帧格式见 [I2C.md](../../I2C.md)。HAL 层总览见 [hal/README.md](../hal/README.md)。
+协议与 SSD1306 帧格式见 [topics/I2C.md](../topics/I2C.md)。HAL 层总览见 [hal/README.md](../hal/README.md)。
 
 ## 常见坑
 

@@ -74,7 +74,7 @@ if (usart1_read_line_try(line, sizeof(line)) == STM_OK) {
 
 应用层用 `bsp_console_*`；中断向量调 `bsp_console_irq_handler()`。
 
-更完整 USART/NVIC 说明见 [USART.md](../../USART.md)、[NVIC.md](../../NVIC.md)。
+更完整 USART/NVIC 说明见 [topics/USART.md](../topics/USART.md)、[topics/NVIC.md](../topics/NVIC.md)。
 
 ## 常见坑
 

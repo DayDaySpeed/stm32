@@ -73,7 +73,7 @@ uint16_t ntc = s[ADC1_DUAL_SLOT_THERM];
 uint16_t ir  = s[ADC1_DUAL_SLOT_IR_REFLECT];
 ```
 
-更完整 ADC 原理见根目录 [adc.md](../../adc.md)。
+更完整 ADC 原理见 [topics/adc.md](../topics/adc.md)。
 
 ## 常见坑
 

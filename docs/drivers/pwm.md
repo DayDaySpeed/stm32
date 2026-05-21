@@ -13,7 +13,7 @@
 | 时钟 | `bsp_clock_get_apb1_timer_hz()`（APB1 预分频≠1 时自动 ×2） |
 | 前置 | `bsp_clock_apply_profile()` → `bsp_board_init()`（开 GPIOA/TIM2 时钟） |
 
-更深入的 PWM 原理见根目录 [pwm.md](../../pwm.md)。
+更深入的 PWM 原理见 [topics/pwm.md](../topics/pwm.md)。
 
 ## 配置结构体
 

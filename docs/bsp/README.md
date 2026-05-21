@@ -18,7 +18,7 @@ stm32f103_regs.h（寄存器）
 |------|------|
 | [board_devices.md](./board_devices.md) | 逻辑设备 API、init 顺序、驱动映射表 |
 | [board_config.md](./board_config.md) | 用户可调宏（编码器、红外、蜂鸣器等） |
-| [clock.md](./clock.md) | BSP 时钟 API 与启动顺序（原理见根目录专题） |
+| [clock.md](./clock.md) | BSP 时钟 API 与启动顺序（原理见 [topics/clock.md](../topics/clock.md)） |
 
 ## 源文件速查
 
@@ -85,4 +85,4 @@ stm32f103_regs.h（寄存器）
 - [驱动文档](../drivers/README.md)
 - [HAL 层](../hal/README.md)
 - [驱动接口约定](../DRIVER_API_GUIDE.md)
-- 时钟原理专题：[clock.md](../../clock.md)
+- 时钟原理专题：[topics/clock.md](../topics/clock.md)

@@ -46,7 +46,7 @@ SSD1306 使用方式：
 - `ctrl=0x00`：命令流  
 - `ctrl=0x40`：GDDRAM 数据  
 
-协议与波形细节见根目录 [I2C.md](../../I2C.md)。
+协议与波形细节见 [topics/I2C.md](../topics/I2C.md)。
 
 ---
 
@@ -76,7 +76,7 @@ SSD1306 使用方式：
 
 ## 相关文档
 
-- [I2C 与 SSD1306 原理](../../I2C.md)  
+- [topics/I2C.md](../topics/I2C.md)  
 - [drivers/ssd1306_oled.md](../drivers/ssd1306_oled.md)  
 - [bsp/board_devices.md](../bsp/board_devices.md) — `bsp_display_*`  
 - [bsp/clock.md](../bsp/clock.md) — PCLK1 频率

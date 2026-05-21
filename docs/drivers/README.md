@@ -2,16 +2,16 @@
 
 本目录为 `src/drivers/` 的专题说明。HAL 层（I2C）见 [../hal/README.md](../hal/README.md)。每篇文档包含：驱动作用、API 与参数、实现思路、使用示例与常见坑。
 
-## 原理专题（根目录，API 文档互补）
+## 原理专题（与 API 文档互补）
 
-| 原理 | 根目录专题 | 本目录 API 文档 |
-|------|------------|-----------------|
-| 时钟 / RCC | [clock.md](../../clock.md) | [../bsp/clock.md](../bsp/clock.md) |
-| I2C / SSD1306 | [I2C.md](../../I2C.md) | [i2c1_master.md](./i2c1_master.md)、[ssd1306_oled.md](./ssd1306_oled.md) |
-| USART / NVIC | [USART.md](../../USART.md)、[NVIC.md](../../NVIC.md) | [usart1.md](./usart1.md) |
-| PWM | [pwm.md](../../pwm.md) | [pwm.md](./pwm.md)、[dc_motor.md](./dc_motor.md)、[sensor_led.md](./sensor_led.md) |
-| 编码器 | [encoder.md](../../encoder.md) | [encoder.md](./encoder.md) |
-| ADC | [adc.md](../../adc.md) | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) 及传感器薄封装 |
+| 原理 | 专题文档 | 本目录 API |
+|------|----------|------------|
+| 时钟 / RCC | [topics/clock.md](../topics/clock.md) | [bsp/clock.md](../bsp/clock.md) |
+| I2C / SSD1306 | [topics/I2C.md](../topics/I2C.md) | [i2c1_master.md](./i2c1_master.md)、[ssd1306_oled.md](./ssd1306_oled.md) |
+| USART / NVIC | [topics/USART.md](../topics/USART.md)、[topics/NVIC.md](../topics/NVIC.md) | [usart1.md](./usart1.md) |
+| PWM | [topics/pwm.md](../topics/pwm.md) | [pwm.md](./pwm.md)、[dc_motor.md](./dc_motor.md)、[sensor_led.md](./sensor_led.md) |
+| 编码器 | [topics/encoder.md](../topics/encoder.md) | [encoder.md](./encoder.md) |
+| ADC | [topics/adc.md](../topics/adc.md) | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) 及传感器薄封装 |
 
 ## 文档列表
 

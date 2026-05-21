@@ -81,7 +81,7 @@ ssd1306_default_refresh();
 
 应用层：`bsp_display_write_text_atf(page, col, fmt, ...)`。
 
-I2C 与协议细节见 [I2C.md](../../I2C.md)。
+I2C 与协议细节见 [topics/I2C.md](../topics/I2C.md)。
 
 ## 常见坑
 
