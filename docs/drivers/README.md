@@ -1,8 +1,17 @@
 # 驱动模块文档
 
-本目录为 `src/drivers/` 与 `src/hal/i2c1_master.c` 的专题说明。每篇文档包含：驱动作用、API 与参数、实现思路、使用示例与常见坑。
+本目录为 `src/drivers/` 的专题说明。HAL 层（I2C）见 [../hal/README.md](../hal/README.md)。每篇文档包含：驱动作用、API 与参数、实现思路、使用示例与常见坑。
 
-更深入的寄存器/原理说明见根目录专题（如 [pwm.md](../../pwm.md)、[adc.md](../../adc.md)）。
+## 原理专题（根目录，API 文档互补）
+
+| 原理 | 根目录专题 | 本目录 API 文档 |
+|------|------------|-----------------|
+| 时钟 / RCC | [clock.md](../../clock.md) | [../bsp/clock.md](../bsp/clock.md) |
+| I2C / SSD1306 | [I2C.md](../../I2C.md) | [i2c1_master.md](./i2c1_master.md)、[ssd1306_oled.md](./ssd1306_oled.md) |
+| USART / NVIC | [USART.md](../../USART.md)、[NVIC.md](../../NVIC.md) | [usart1.md](./usart1.md) |
+| PWM | [pwm.md](../../pwm.md) | [pwm.md](./pwm.md)、[dc_motor.md](./dc_motor.md)、[sensor_led.md](./sensor_led.md) |
+| 编码器 | [encoder.md](../../encoder.md) | [encoder.md](./encoder.md) |
+| ADC | [adc.md](../../adc.md) | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) 及传感器薄封装 |
 
 ## 文档列表
 
@@ -24,7 +33,7 @@
 
 ## 阅读顺序
 
-1. [驱动接口约定](../DRIVER_API_GUIDE.md)
+1. [BSP 层](../bsp/README.md) 与 [驱动接口约定](../DRIVER_API_GUIDE.md)
 2. [编码规范](../CODING_STYLE.md)
 3. 按外设选读上表对应文档
-4. 应用层用法见 `bsp/board_devices.h` 与 `src/app/app.c`
+4. 应用层用法见 [board_devices](../bsp/board_devices.md) 与 `src/app/app.c`

@@ -42,7 +42,7 @@ stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille);
 stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille);
 stm_status_t bsp_dc_motor_stop(void);
 
-/* 一次性初始化 ADC1 双通道 SCAN+DMA 及光敏/热敏逻辑驱动。 */
+/* 一次性初始化 ADC1 三路 SCAN+DMA 及光敏/热敏/红外逻辑驱动。 */
 stm_status_t bsp_analog_sensors_init(void);
 
 stm_status_t bsp_ambient_light_init(void);

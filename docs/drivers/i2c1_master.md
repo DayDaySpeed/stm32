@@ -1,5 +1,7 @@
 # I2C1 主机 HAL（`i2c1_master`）
 
+> **分层**：本模块属 [HAL 层](../hal/README.md)，非 `src/drivers/`。文档放在此目录是为与 SSD1306 相邻。
+
 ## 作用
 
 提供 **I2C1 主机** 阻塞式写帧事务，供 SSD1306 等从设备使用。位于 `src/hal/`，介于 BSP 时钟/引脚与具体器件驱动之间。
@@ -72,7 +74,7 @@ i2c1_master_write_frame(0x3CU, 0x00U, cmd, 1U);
 
 SSD1306 默认在 `ssd1306_default_init` 内部完成 I2C init。
 
-协议与 SSD1306 帧格式见 [I2C.md](../../I2C.md)。
+协议与 SSD1306 帧格式见 [I2C.md](../../I2C.md)。HAL 层总览见 [hal/README.md](../hal/README.md)。
 
 ## 常见坑
 
