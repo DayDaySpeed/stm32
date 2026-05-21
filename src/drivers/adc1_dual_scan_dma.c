@@ -144,6 +144,7 @@ static stm_status_t adc1_dual_configure_adc_clock(
   return adc1_dual_configure_adc_clock_manual(config->adc_prescaler);
 }
 
+//校准
 static stm_status_t adc1_dual_adc_calibrate(void) {
   ADC1_CR2 |= ADC_CR2_ADON_BIT;
   adc1_dual_adc_stabilize_delay();
@@ -163,15 +164,17 @@ static stm_status_t adc1_dual_adc_calibrate(void) {
 static void adc1_dual_configure_scan_sequence(void) {
   uint32_t smpr_mask = (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP1_SHIFT) |
                        (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP2_SHIFT);
-
+//配置采样时间寄存器2|SMPR2[CH0 ~ CH9]
   ADC1_SMPR2 = (ADC1_SMPR2 & ~smpr_mask) | ADC_SMPR2_SMP1_MAX |
                ADC_SMPR2_SMP2_MAX;
-
+//转换序列长度寄存器SQR1|设置转换数 = 2
   ADC1_SQR1 = (ADC1_SQR1 & ~ADC_CR1_L_MASK) | ADC_CR1_L_2_CONV;
+//规则序列寄存器SQR3|第一次采集ch1,第二次采集ch2
   ADC1_SQR3 = ADC_SQR3_SQ1(ADC1_DUAL_CH_PHOTO) | ADC_SQR3_SQ2(ADC1_DUAL_CH_THERM);
 }
 
 static void adc1_dual_dma_disable_channel(void) {
+  //开启通道
   DMA1_CCR1 &= ~DMA_CCR_EN_BIT;
   DMA1_IFCR = DMA_IFCR_CTCIF1_BIT;
 }

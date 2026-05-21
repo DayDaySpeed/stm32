@@ -4,6 +4,7 @@
 
 #include "common/stm_log.h"
 #include "drivers/adc1_dual_scan_dma.h"
+#include "drivers/dc_motor.h"
 #include "drivers/encoder.h"
 #include "drivers/photoresistor.h"
 #include "drivers/thermistor.h"
@@ -13,6 +14,7 @@
 
 #define BOARD_CONSOLE_BAUDRATE 115200UL
 #define BOARD_STATUS_LED_PWM_HZ 1000UL
+#define BOARD_DC_MOTOR_PWM_HZ   10000UL
 
 static const usart1_config_t g_board_console_config = {
     .baudrate = BOARD_CONSOLE_BAUDRATE,
@@ -28,6 +30,11 @@ static const tim2_ch1_pwm_config_t g_board_status_led_config = {
 
 static const tim3_encoder_config_t g_board_wheel_encoder_config = {
     .direction = TIM3_ENCODER_DIR_NORMAL,
+};
+
+static const dc_motor_config_t g_board_dc_motor_config = {
+    .pwm_hz = BOARD_DC_MOTOR_PWM_HZ,
+    .duty_permille = 0U,
 };
 
 static const adc1_dual_config_t g_board_adc_dual_config = {
@@ -106,6 +113,20 @@ stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction) {
   return tim3_encoder_read_direction(out_direction);
 }
 
+stm_status_t bsp_dc_motor_init(void) {
+  return dc_motor_init_with_config(&g_board_dc_motor_config);
+}
+
+stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille) {
+  return dc_motor_set_duty_permille(duty_permille);
+}
+
+stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille) {
+  return dc_motor_get_duty_permille(out_duty_permille);
+}
+
+stm_status_t bsp_dc_motor_stop(void) { return dc_motor_stop(); }
+
 stm_status_t bsp_analog_sensors_init(void) {
   stm_status_t st = adc1_dual_init_with_config(&g_board_adc_dual_config);
   if (st != STM_OK) {
@@ -171,6 +192,10 @@ stm_status_t bsp_default_devices_init(void) {
     return st;
   }
   st = bsp_wheel_encoder_init();
+  if (st != STM_OK) {
+    return st;
+  }
+  st = bsp_dc_motor_init();
   if (st != STM_OK) {
     return st;
   }

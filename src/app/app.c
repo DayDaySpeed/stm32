@@ -13,14 +13,21 @@
 #define APP_BREATH_PHASE_MAX    (400U)
 /* OLED 调试信息刷新节流：太快会阻塞 CPU 拖慢呼吸；500ms 人眼也跟得上。 */
 #define APP_DEBUG_OLED_PERIOD_MS (500U)
+/* 编码器调速：每 20ms 读一次增量并更新电机占空比。 */
+#define APP_MOTOR_PERIOD_MS     (20U)
+/* 旋钮每 1 个计数改变多少千分比占空比；越大越灵敏。 */
+#define APP_MOTOR_ENC_STEP      (8U)
 
-/* 这些静态状态由三个任务函数共享，但不暴露到文件外。 */
+/* 这些静态状态由任务函数共享，但不暴露到文件外。 */
 static uint32_t s_last_step_ms;
 static uint8_t s_time_inited;
 static uint16_t s_phase;
 static uint16_t s_duty_permille;
 static uint32_t s_last_oled_ms;
 static int16_t s_enc_prev;
+static uint32_t s_last_motor_ms;
+static int16_t s_motor_enc_prev;
+static uint16_t s_motor_duty_permille;
 
 /*
  * 呼吸灯步进任务：
@@ -80,6 +87,53 @@ static void app_encoder_oled_task(void) {
   (void)bsp_display_write_text_atf(3U, 0U, "dir = %c          ", dir_sym);
   (void)bsp_display_write_text_atf(5U, 0U, "phase=%u duty=%u  ",
                                    s_phase, s_duty_permille);
+  (void)bsp_display_write_text_atf(7U, 0U, "MOT=%u/1000      ",
+                                   s_motor_duty_permille);
+}
+
+/*
+ * 旋钮调速任务（AIN2 接 GND：仅停/单方向转）：
+ * - 顺时针增量 -> 提高电机占空比
+ * - 逆时针增量 -> 降低占空比（到 0 停）
+ */
+static void app_motor_encoder_task(uint32_t now_ms) {
+  int16_t enc_now = 0;
+  int16_t enc_delta = 0;
+  int32_t next_duty = 0;
+
+  if (s_last_motor_ms == 0U) {
+    s_last_motor_ms = now_ms;
+    s_motor_duty_permille = 0U;
+    if (bsp_wheel_encoder_read_count(&enc_now) == STM_OK) {
+      s_motor_enc_prev = enc_now;
+    }
+    return;
+  }
+
+  if ((uint32_t)(now_ms - s_last_motor_ms) < APP_MOTOR_PERIOD_MS) {
+    return;
+  }
+  s_last_motor_ms = now_ms;
+
+  if (bsp_wheel_encoder_read_count(&enc_now) != STM_OK) {
+    return;
+  }
+
+  enc_delta = (int16_t)(enc_now - s_motor_enc_prev);
+  s_motor_enc_prev = enc_now;
+  if (enc_delta == 0) {
+    return;
+  }
+
+  next_duty = (int32_t)s_motor_duty_permille + (int32_t)enc_delta * APP_MOTOR_ENC_STEP;
+  if (next_duty < 0) {
+    next_duty = 0;
+  } else if (next_duty > 1000) {
+    next_duty = 1000;
+  }
+
+  s_motor_duty_permille = (uint16_t)next_duty;
+  (void)bsp_dc_motor_set_speed_permille(s_motor_duty_permille);
 }
 
 /*
@@ -142,6 +196,7 @@ static void tasks(void) {
   uint32_t now = systick_get_ms();
 
   app_breath_led_task(now);
+  app_motor_encoder_task(now);
 
   if ((uint32_t)(now - s_last_oled_ms) < APP_DEBUG_OLED_PERIOD_MS) {
     return;
@@ -169,7 +224,7 @@ stm_status_t app_init(void) {
     return st;
   }
   st = bsp_console_write_string_blocking(
-      "display/status-led/encoder/light/temp ready\r\n");
+      "display/led/encoder/motor/light/temp ready\r\n");
   if (st != STM_OK) {
     return st;
   }

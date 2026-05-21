@@ -31,6 +31,11 @@ stm_status_t bsp_wheel_encoder_init(void);
 stm_status_t bsp_wheel_encoder_read_count(int16_t *out_count);
 stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction);
 
+stm_status_t bsp_dc_motor_init(void);
+stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille);
+stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille);
+stm_status_t bsp_dc_motor_stop(void);
+
 /* 一次性初始化 ADC1 双通道 SCAN+DMA 及光敏/热敏逻辑驱动。 */
 stm_status_t bsp_analog_sensors_init(void);
 

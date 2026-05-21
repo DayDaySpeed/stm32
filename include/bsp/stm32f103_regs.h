@@ -15,6 +15,7 @@
 
 #define RCC_TIM2EN_BIT      (1U << 0)  /* TIM2 时钟使能（APB1ENR） */
 #define RCC_TIM3EN_BIT      (1U << 1)  /* TIM3 时钟使能（APB1ENR） */
+#define RCC_TIM4EN_BIT      (1U << 2)  /* TIM4 时钟使能（APB1ENR） */
 #define RCC_I2C1EN_BIT      (1U << 21) /* I2C1 时钟使能（APB1ENR） */
 
 #define RCC_AFIOEN_BIT      (1U << 0)  /* AFIO 时钟使能（APB2ENR） */
@@ -81,6 +82,7 @@
 #define GPIOB_IDR           (*(volatile uint32_t *)(GPIOB_BASE + 0x08UL)) /* GPIOB 输入数据寄存器 */
 #define GPIOB_ODR           (*(volatile uint32_t *)(GPIOB_BASE + 0x0CUL)) /* GPIOB 输出数据寄存器 */
 #define GPIOB_BSRR          (*(volatile uint32_t *)(GPIOB_BASE + 0x10UL)) /* GPIOB 置位/复位寄存器（原子操作） */
+#define GPIOB_CRL           (*(volatile uint32_t *)(GPIOB_BASE + 0x00UL)) /* GPIOB 配置低寄存器（PB0~PB7） */
 
 /* GPIOC（通用输入输出端口 C，General Purpose Input/Output Port C）：配置 C 口引脚模式并进行输入输出控制 */
 #define GPIOC_BASE          (0x40011000UL) /* GPIOC 基地址 */
@@ -164,6 +166,19 @@
 #define TIM3_CNT            (*(volatile uint32_t *)(TIM3_BASE + 0x24UL)) /* 计数器（编码器模式下记录脉冲计数） */
 #define TIM3_PSC            (*(volatile uint32_t *)(TIM3_BASE + 0x28UL)) /* 预分频（编码器模式必须=0） */
 #define TIM3_ARR            (*(volatile uint32_t *)(TIM3_BASE + 0x2CUL)) /* 自动重装（编码器溢出/下溢边界） */
+
+/* TIM4（通用定时器4）：PB6=CH1，用于 TB6612 PWMA） */
+#define TIM4_BASE           (0x40000800UL)
+#define TIM4_CR1            (*(volatile uint32_t *)(TIM4_BASE + 0x00UL))
+#define TIM4_DIER           (*(volatile uint32_t *)(TIM4_BASE + 0x0CUL))
+#define TIM4_SR             (*(volatile uint32_t *)(TIM4_BASE + 0x10UL))
+#define TIM4_EGR            (*(volatile uint32_t *)(TIM4_BASE + 0x14UL))
+#define TIM4_CCMR1          (*(volatile uint32_t *)(TIM4_BASE + 0x18UL))
+#define TIM4_CCER           (*(volatile uint32_t *)(TIM4_BASE + 0x20UL))
+#define TIM4_CNT            (*(volatile uint32_t *)(TIM4_BASE + 0x24UL))
+#define TIM4_PSC            (*(volatile uint32_t *)(TIM4_BASE + 0x28UL))
+#define TIM4_ARR            (*(volatile uint32_t *)(TIM4_BASE + 0x2CUL))
+#define TIM4_CCR1           (*(volatile uint32_t *)(TIM4_BASE + 0x34UL))
 
 /* TIM 通用：CR1 方向位（编码器模式下只读，硬件按 A/B 相位关系自动写） */
 #define TIM_CR1_DIR_BIT     (1U << 4) /* 0=向上计数，1=向下计数 */
