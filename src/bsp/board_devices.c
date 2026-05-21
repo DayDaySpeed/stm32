@@ -1,7 +1,5 @@
 #include "bsp/board_devices.h"
 
-#include "bsp/board_config.h"
-
 #include <stdarg.h>
 
 #include "common/stm_log.h"
@@ -9,6 +7,8 @@
 #include "drivers/dc_motor.h"
 #include "drivers/encoder.h"
 #include "drivers/photoresistor.h"
+#include "bsp/board_config.h"
+#include "drivers/buzzer.h"
 #include "drivers/ir_reflect.h"
 #include "drivers/thermistor.h"
 #include "drivers/pwm.h"
@@ -62,6 +62,10 @@ static const thermistor_config_t g_board_temperature_config = {
 static const ir_reflect_config_t g_board_ir_reflect_config = {
     .clock_source = IR_REFLECT_ADC_CLOCK_SOURCE_PCLK2,
     .adc_prescaler = IR_REFLECT_ADC_PRESCALER_AUTO,
+};
+
+static const buzzer_config_t g_board_buzzer_config = {
+    .active_high = BOARD_BUZZER_ACTIVE_HIGH,
 };
 
 stm_status_t bsp_console_init(void) {
@@ -164,6 +168,14 @@ stm_status_t bsp_ir_reflect_read_raw_average(uint16_t *out_raw12,
   return ir_reflect_read_raw_average_blocking(out_raw12, sample_count);
 }
 
+stm_status_t bsp_buzzer_init(void) {
+  return buzzer_init_with_config(&g_board_buzzer_config);
+}
+
+stm_status_t bsp_buzzer_beep_blocking(uint32_t duration_ms) {
+  return buzzer_beep_blocking(duration_ms);
+}
+
 stm_status_t bsp_ambient_light_init(void) {
   return photoresistor_init_with_config(&g_board_ambient_light_config);
 }
@@ -224,5 +236,9 @@ stm_status_t bsp_default_devices_init(void) {
   if (st != STM_OK) {
     return st;
   }
-  return bsp_analog_sensors_init();
+  st = bsp_analog_sensors_init();
+  if (st != STM_OK) {
+    return st;
+  }
+  return bsp_buzzer_init();
 }

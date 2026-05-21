@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "bsp/board_config.h"
 #include "bsp/board_devices.h"
 #include "common/stm_assert.h"
 #include "common/stm_log.h"
@@ -22,6 +23,8 @@
 #define APP_MOTOR_PERIOD_MS     (20U)
 /* 旋钮每 1 个计数改变多少千分比占空比；越大越灵敏。 */
 #define APP_MOTOR_ENC_STEP      (8U)
+/* 红外靠近检测周期（毫秒）。 */
+#define APP_IR_CHECK_PERIOD_MS  (80U)
 
 /* 这些静态状态由任务函数共享，但不暴露到文件外。 */
 static uint32_t s_last_step_ms;
@@ -34,6 +37,39 @@ static uint32_t s_oled_last_recover_ms;
 static uint32_t s_last_motor_ms;
 static int16_t s_motor_enc_prev;
 static uint16_t s_motor_duty_permille;
+static uint8_t s_hand_near;
+static uint32_t s_last_ir_check_ms;
+static uint32_t s_ir_beep_cooldown_until_ms;
+
+/*
+ * 手靠近反射红外（raw 超过 BOARD_IR_NEAR_RAW_HIGH）时鸣叫一次；
+ * 手离开（raw 低于 BOARD_IR_LEAVE_RAW_LOW）后才允许再次触发。
+ */
+static void app_ir_proximity_buzzer_task(uint32_t now_ms) {
+  uint16_t ir_raw = 0U;
+
+  if ((uint32_t)(now_ms - s_last_ir_check_ms) < APP_IR_CHECK_PERIOD_MS) {
+    return;
+  }
+  s_last_ir_check_ms = now_ms;
+
+  if (bsp_ir_reflect_read_raw_average(&ir_raw, 2U) != STM_OK) {
+    return;
+  }
+
+  if (ir_raw >= BOARD_IR_NEAR_RAW_HIGH) {
+    if ((s_hand_near == 0U) && (now_ms >= s_ir_beep_cooldown_until_ms)) {
+      (void)bsp_buzzer_beep_blocking(BOARD_BUZZER_BEEP_MS);
+      s_ir_beep_cooldown_until_ms = now_ms + BOARD_IR_BEEP_COOLDOWN_MS;
+    }
+    s_hand_near = 1U;
+    return;
+  }
+
+  if (ir_raw < BOARD_IR_LEAVE_RAW_LOW) {
+    s_hand_near = 0U;
+  }
+}
 
 /*
  * 呼吸灯步进任务：
@@ -234,6 +270,7 @@ static void tasks(void) {
 
   app_breath_led_task(now);
   app_motor_encoder_task(now);
+  app_ir_proximity_buzzer_task(now);
 
   if ((uint32_t)(now - s_last_oled_ms) < APP_DEBUG_OLED_PERIOD_MS) {
     return;
@@ -293,7 +330,7 @@ stm_status_t app_init(void) {
     return st;
   }
   st = bsp_console_write_string_blocking(
-      "display/led/encoder/motor/light/temp/ir ready\r\n");
+      "display/led/encoder/motor/light/temp/ir/buzzer ready\r\n");
   if (st != STM_OK) {
     return st;
   }

@@ -14,4 +14,19 @@
  */
 #define BOARD_WHEEL_ENCODER_DIRECTION TIM3_ENCODER_DIR_INVERTED
 
+/* 有源蜂鸣器：1=高电平响，0=低电平响 */
+#define BOARD_BUZZER_ACTIVE_HIGH      (1U)
+/* 单次鸣叫时长（毫秒） */
+#define BOARD_BUZZER_BEEP_MS          (80U)
+/* 手靠近红外后再次允许鸣叫的最小间隔（毫秒） */
+#define BOARD_IR_BEEP_COOLDOWN_MS     (800U)
+
+/*
+ * 反射红外「靠近」判定（12 位 ADC 原始值，按模块实测在 board_config.h 里改）：
+ *   手靠近通常反射增强 → raw 升高：用 NEAR_HIGH / LEAVE_LOW 滞回。
+ *   若你模块相反（靠近反而变小），把两阈值对调或改 app 判断逻辑。
+ */
+#define BOARD_IR_NEAR_RAW_HIGH        (2200U)
+#define BOARD_IR_LEAVE_RAW_LOW        (1800U)
+
 #endif

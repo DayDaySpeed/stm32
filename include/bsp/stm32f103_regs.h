@@ -75,6 +75,7 @@
 #define GPIOA_CRH           (*(volatile uint32_t *)(GPIOA_BASE + 0x04UL)) /* GPIOA 配置高寄存器（PA8~PA15） */
 #define GPIOA_IDR           (*(volatile uint32_t *)(GPIOA_BASE + 0x08UL)) /* GPIOA 输入数据寄存器 */
 #define GPIOA_ODR           (*(volatile uint32_t *)(GPIOA_BASE + 0x0CUL)) /* GPIOA 输出数据寄存器（输入模式下用于选上拉/下拉） */
+#define GPIOA_BSRR          (*(volatile uint32_t *)(GPIOA_BASE + 0x10UL)) /* GPIOA 置位/复位寄存器 */
 
 /* GPIOB（通用输入输出端口 B，General Purpose Input/Output Port B）：配置 B 口引脚模式并进行输入输出控制 */
 #define GPIOB_BASE          (0x40010C00UL) /* GPIOB 基地址 */
