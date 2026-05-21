@@ -22,11 +22,11 @@
 #define BOARD_IR_BEEP_COOLDOWN_MS     (800U)
 
 /*
- * 反射红外「靠近」判定（12 位 ADC 原始值，按模块实测在 board_config.h 里改）：
- *   手靠近通常反射增强 → raw 升高：用 NEAR_HIGH / LEAVE_LOW 滞回。
- *   若你模块相反（靠近反而变小），把两阈值对调或改 app 判断逻辑。
+ * 反射红外「靠近」判定（本板 TCRT5000 类：远离 ~4000，靠近 ~100，故用「低于」判靠近）：
+ *   raw <= NEAR_LOW  → 视为手靠近，可触发蜂鸣
+ *   raw >= LEAVE_HIGH → 视为手离开，允许下次再响
  */
-#define BOARD_IR_NEAR_RAW_HIGH        (2200U)
-#define BOARD_IR_LEAVE_RAW_LOW        (1800U)
+#define BOARD_IR_NEAR_RAW_LOW         (500U)
+#define BOARD_IR_LEAVE_RAW_HIGH       (3000U)
 
 #endif

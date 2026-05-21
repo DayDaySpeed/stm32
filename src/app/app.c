@@ -42,8 +42,8 @@ static uint32_t s_last_ir_check_ms;
 static uint32_t s_ir_beep_cooldown_until_ms;
 
 /*
- * 手靠近反射红外（raw 超过 BOARD_IR_NEAR_RAW_HIGH）时鸣叫一次；
- * 手离开（raw 低于 BOARD_IR_LEAVE_RAW_LOW）后才允许再次触发。
+ * 手靠近反射红外（raw <= BOARD_IR_NEAR_RAW_LOW，本板远离时 ~4000）时鸣叫一次；
+ * 手离开（raw >= BOARD_IR_LEAVE_RAW_HIGH）后才允许再次触发。
  */
 static void app_ir_proximity_buzzer_task(uint32_t now_ms) {
   uint16_t ir_raw = 0U;
@@ -57,7 +57,7 @@ static void app_ir_proximity_buzzer_task(uint32_t now_ms) {
     return;
   }
 
-  if (ir_raw >= BOARD_IR_NEAR_RAW_HIGH) {
+  if (ir_raw <= BOARD_IR_NEAR_RAW_LOW) {
     if ((s_hand_near == 0U) && (now_ms >= s_ir_beep_cooldown_until_ms)) {
       (void)bsp_buzzer_beep_blocking(BOARD_BUZZER_BEEP_MS);
       s_ir_beep_cooldown_until_ms = now_ms + BOARD_IR_BEEP_COOLDOWN_MS;
@@ -66,7 +66,7 @@ static void app_ir_proximity_buzzer_task(uint32_t now_ms) {
     return;
   }
 
-  if (ir_raw < BOARD_IR_LEAVE_RAW_LOW) {
+  if (ir_raw >= BOARD_IR_LEAVE_RAW_HIGH) {
     s_hand_near = 0U;
   }
 }
