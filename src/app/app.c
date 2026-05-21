@@ -31,7 +31,6 @@ static uint16_t s_duty_permille;
 static uint32_t s_last_oled_ms;
 static uint8_t s_oled_fail_streak;
 static uint32_t s_oled_last_recover_ms;
-static int16_t s_enc_prev;
 static uint32_t s_last_motor_ms;
 static int16_t s_motor_enc_prev;
 static uint16_t s_motor_duty_permille;
@@ -87,43 +86,28 @@ static stm_status_t app_oled_try_recover(uint32_t now_ms) {
 }
 
 /*
- * 编码器调试显示任务：
- * - 读取当前累计计数
- * - 与上次值做差得到近似速度增量
- * - 刷新 OLED 第 0/1/2/3/5 行
+ * 编码器 / 电机 / 呼吸灯 OLED（page 0..2）：
+ *   0 ENC   1 MOT   2 LED(phase/duty)
  */
 static stm_status_t app_encoder_oled_task(void) {
   int16_t enc_now = 0;
-  int16_t enc_delta = 0;
   stm_status_t st = STM_OK;
 
-  if (bsp_wheel_encoder_read_count(&enc_now) == STM_OK) {
-    enc_delta = (int16_t)(enc_now - s_enc_prev);
-    s_enc_prev = enc_now;
-  } else {
+  if (bsp_wheel_encoder_read_count(&enc_now) != STM_OK) {
     enc_now = 0;
-    enc_delta = 0;
   }
 
-  st = bsp_display_write_text_atf(0U, 0U, "wheel encoder      ");
+  st = bsp_display_write_text_atf(0U, 0U, "ENC=%d            ", enc_now);
   if (st != STM_OK) {
     return st;
   }
-  st = bsp_display_write_text_atf(1U, 0U, "CNT = %d        ", enc_now);
+  st = bsp_display_write_text_atf(1U, 0U, "MOT=%u/1000       ",
+                                  s_motor_duty_permille);
   if (st != STM_OK) {
     return st;
   }
-  st = bsp_display_write_text_atf(2U, 0U, "dlt = %d        ", enc_delta);
-  if (st != STM_OK) {
-    return st;
-  }
-  st = bsp_display_write_text_atf(5U, 0U, "phase=%u duty=%u  ",
-                                  s_phase, s_duty_permille);
-  if (st != STM_OK) {
-    return st;
-  }
-  return bsp_display_write_text_atf(7U, 0U, "MOT=%u/1000      ",
-                                    s_motor_duty_permille);
+  return bsp_display_write_text_atf(2U, 0U, "LED %u/%u         ",
+                                    s_phase, s_duty_permille);
 }
 
 /*
@@ -172,9 +156,8 @@ static void app_motor_encoder_task(uint32_t now_ms) {
 }
 
 /*
- * 光敏 + 热敏调试显示（一次 SCAN+DMA 双通道平均采样）：
- * - 第 4 行：光敏原始值与估算电压
- * - 第 6 行：热敏温度（0.1°C）与原始 ADC
+ * 光敏 + 热敏（page 3..4，一次 SCAN+DMA 双通道平均）：
+ *   3 LDR   4 NTC
  */
 static stm_status_t app_analog_sensors_oled_task(void) {
   uint16_t ldr_raw = 0U;
@@ -183,12 +166,12 @@ static stm_status_t app_analog_sensors_oled_task(void) {
       bsp_analog_sensors_read_pair_average(&ldr_raw, &ntc_raw, 4U);
 
   if (st != STM_OK) {
-    stm_status_t w = bsp_display_write_text_atf(4U, 0U, "ADC err=%d        ",
+    stm_status_t w = bsp_display_write_text_atf(3U, 0U, "LDR err=%d        ",
                                                 (int32_t)st);
     if (w != STM_OK) {
       return w;
     }
-    return bsp_display_write_text_atf(6U, 0U, "NTC err=%d        ", (int32_t)st);
+    return bsp_display_write_text_atf(4U, 0U, "NTC err=%d        ", (int32_t)st);
   }
 
   {
@@ -196,7 +179,7 @@ static stm_status_t app_analog_sensors_oled_task(void) {
     uint32_t ldr_v_int = ldr_mv / 1000U;
     uint32_t ldr_v_frac = ldr_mv % 1000U;
 
-    st = bsp_display_write_text_atf(4U, 0U,
+    st = bsp_display_write_text_atf(3U, 0U,
                                     "LDR=%u %u.%u%u%uV ",
                                     ldr_raw,
                                     ldr_v_int,
@@ -214,7 +197,7 @@ static stm_status_t app_analog_sensors_oled_task(void) {
         bsp_temperature_read_celsius_x10_from_raw(ntc_raw, &temp_x10);
 
     if (temp_st != STM_OK) {
-      return bsp_display_write_text_atf(6U, 0U, "NTC err=%d raw=%u ",
+      return bsp_display_write_text_atf(4U, 0U, "NTC err=%d raw=%u ",
                                         (int32_t)temp_st, ntc_raw);
     }
 
@@ -224,7 +207,7 @@ static stm_status_t app_analog_sensors_oled_task(void) {
       int32_t t_int = t_abs / 10;
       int32_t t_frac = t_abs % 10;
 
-      return bsp_display_write_text_atf(6U, 0U,
+      return bsp_display_write_text_atf(4U, 0U,
                                           "NTC=%c%d.%dC raw=%u  ",
                                           sign, t_int, t_frac, ntc_raw);
     }
