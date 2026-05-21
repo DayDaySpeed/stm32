@@ -7,6 +7,7 @@
 #include "bsp/board_pins.h"
 #include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
+#include "common/tim_timebase.h"
 
 #include <stddef.h>
 
@@ -14,43 +15,6 @@
 
 static uint32_t g_ticks_per_period;
 
-static uint32_t tim1_input_clock_hz(void) {
-  return bsp_clock_get_pclk2_hz();
-}
-
-static uint32_t duty_to_ccr(uint16_t duty_permille, uint32_t ticks) {
-  return ((uint32_t)duty_permille * ticks + 500U) / 1000U;
-}
-
-static stm_status_t sensor_led_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_hz,
-                                                uint16_t *psc_out, uint16_t *arr_out) {
-  uint32_t total;
-
-  if ((pwm_hz == 0U) || (tim_clk_hz < pwm_hz)) {
-    return STM_ERR_INVALID_ARG;
-  }
-
-  total = tim_clk_hz / pwm_hz;
-  for (uint32_t psc = 1U; psc <= 0x10000U; psc++) {
-    if ((total % psc) != 0U) {
-      continue;
-    }
-    uint32_t arr = total / psc;
-    if ((arr >= 1U) && (arr <= 0x10000U)) {
-      *psc_out = (uint16_t)(psc - 1U);
-      *arr_out = (uint16_t)(arr - 1U);
-      return STM_OK;
-    }
-  }
-
-  {
-    uint32_t psc = (total + 0xFFFFU) / 0x10000U;
-    uint32_t arr = total / psc;
-    *psc_out = (uint16_t)(psc - 1U);
-    *arr_out = (uint16_t)(arr - 1U);
-  }
-  return STM_OK;
-}
 
 static void sensor_led_gpio_init(void) {
   GPIOA_CRH = (GPIOA_CRH & ~(BOARD_GPIO_PA8_CRH_MASK | BOARD_GPIO_PA11_CRH_MASK)) |
@@ -76,8 +40,8 @@ static void sensor_led_apply_hw(uint16_t psc, uint16_t arr, uint16_t ldr_permill
   TIM1_PSC = (uint32_t)psc;
   TIM1_ARR = (uint32_t)arr;
   TIM1_CR1 |= TIM_CR1_ARPE_BIT;
-  TIM1_CCR1 = duty_to_ccr(ldr_permille, ticks);
-  TIM1_CCR4 = duty_to_ccr(ntc_permille, ticks);
+  TIM1_CCR1 = stm_tim_duty_permille_to_ccr(ldr_permille, ticks);
+  TIM1_CCR4 = stm_tim_duty_permille_to_ccr(ntc_permille, ticks);
 
   TIM1_BDTR = TIM_BDTR_MOE_BIT;
   TIM1_EGR = TIM_EGR_UG_BIT;
@@ -97,8 +61,8 @@ stm_status_t sensor_led_init_with_config(const sensor_led_config_t *config) {
     return STM_ERR_INVALID_ARG;
   }
 
-  tim_clk = tim1_input_clock_hz();
-  st = sensor_led_resolve_timebase(tim_clk, config->pwm_hz, &psc, &arr);
+  tim_clk = bsp_clock_get_apb2_timer_hz();
+  st = stm_tim_resolve_timebase(tim_clk, config->pwm_hz, &psc, &arr);
   if (st != STM_OK) {
     return st;
   }
@@ -128,7 +92,7 @@ stm_status_t sensor_led_set_ldr_permille(uint16_t duty_permille) {
   if (st != STM_OK) {
     return st;
   }
-  TIM1_CCR1 = duty_to_ccr(duty_permille, g_ticks_per_period);
+  TIM1_CCR1 = stm_tim_duty_permille_to_ccr(duty_permille, g_ticks_per_period);
   return STM_OK;
 }
 
@@ -137,6 +101,6 @@ stm_status_t sensor_led_set_ntc_permille(uint16_t duty_permille) {
   if (st != STM_OK) {
     return st;
   }
-  TIM1_CCR4 = duty_to_ccr(duty_permille, g_ticks_per_period);
+  TIM1_CCR4 = stm_tim_duty_permille_to_ccr(duty_permille, g_ticks_per_period);
   return STM_OK;
 }

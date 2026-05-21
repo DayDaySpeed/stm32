@@ -279,6 +279,11 @@ stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
   return STM_OK;
 }
 
+stm_status_t bsp_analog_sensors_read_all_average(
+    uint16_t out_samples[ADC1_DUAL_SLOT_COUNT], uint8_t scan_count) {
+  return adc1_dual_read_all_average_blocking(out_samples, scan_count);
+}
+
 stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
                                                        int16_t *out_celsius_x10) {
   return thermistor_read_temperature_from_raw_blocking(therm_raw12,

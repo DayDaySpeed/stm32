@@ -6,6 +6,7 @@
 #include "bsp/board_devices.h"
 #include "common/stm_assert.h"
 #include "common/stm_log.h"
+#include "drivers/adc1_dual_scan_dma.h"
 #include "drivers/systick.h"
 
 /* 每多少毫秒改一次占空比；越小变化越快。 */
@@ -237,11 +238,11 @@ static void app_motor_encoder_task(uint32_t now_ms) {
  *   3 LDR   4 NTC   5 IR
  */
 static stm_status_t app_analog_sensors_oled_task(void) {
+  uint16_t samples[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
   uint16_t ldr_raw = 0U;
   uint16_t ntc_raw = 0U;
   uint16_t ir_raw = 0U;
-  stm_status_t st =
-      bsp_analog_sensors_read_pair_average(&ldr_raw, &ntc_raw, 4U);
+  stm_status_t st = bsp_analog_sensors_read_all_average(samples, 4U);
 
   if (st != STM_OK) {
     stm_status_t w = bsp_display_write_text_atf(3U, 0U, "LDR err=%d        ",
@@ -251,6 +252,10 @@ static stm_status_t app_analog_sensors_oled_task(void) {
     }
     return bsp_display_write_text_atf(4U, 0U, "NTC err=%d        ", (int32_t)st);
   }
+
+  ldr_raw = samples[ADC1_DUAL_SLOT_PHOTO];
+  ntc_raw = samples[ADC1_DUAL_SLOT_THERM];
+  ir_raw = samples[ADC1_DUAL_SLOT_IR_REFLECT];
 
   {
     uint32_t ldr_mv = ((uint32_t)ldr_raw * 3300U + 2047U) / 4095U;
@@ -294,15 +299,11 @@ static stm_status_t app_analog_sensors_oled_task(void) {
     }
   }
 
-  st = bsp_ir_reflect_read_raw_average(&ir_raw, 4U);
-  if (st != STM_OK) {
-    return bsp_display_write_text_atf(5U, 0U, "IR err=%d        ", (int32_t)st);
-  }
-
   {
     uint32_t ir_mv = ((uint32_t)ir_raw * 3300U + 2047U) / 4095U;
-    return bsp_display_write_text_atf(5U, 0U, "IR=%u %umV       ", ir_raw, ir_mv);
+    st = bsp_display_write_text_atf(5U, 0U, "IR=%u %umV       ", ir_raw, ir_mv);
   }
+  return st;
 }
 
 /* 主循环里的合作式任务调度器：先跑呼吸灯，再按 500ms 节流刷新 OLED 调试页。 */

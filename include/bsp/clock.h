@@ -19,6 +19,10 @@ uint32_t bsp_clock_get_hclk_hz(void);
 uint32_t bsp_clock_get_pclk1_hz(void);
 uint32_t bsp_clock_get_pclk2_hz(void);
 
+/* APB 预分频 ≠ 1 时，挂在该总线上的定时器时钟自动 ×2（STM32F1 规则）。 */
+uint32_t bsp_clock_get_apb1_timer_hz(void);
+uint32_t bsp_clock_get_apb2_timer_hz(void);
+
 /* SysTick 1ms 中断的 RVR 重装载值：HCLK 计数到 0 时触发，故为 (HCLK/1000)-1。 */
 #define BSP_SYSTICK_RELOAD_1MS ((bsp_clock_get_hclk_hz() / 1000UL) - 1UL)
 

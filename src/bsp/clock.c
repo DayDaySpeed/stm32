@@ -138,3 +138,18 @@ uint32_t bsp_clock_get_sysclk_hz(void) { return g_sysclk_hz; }
 uint32_t bsp_clock_get_hclk_hz(void) { return g_hclk_hz; }
 uint32_t bsp_clock_get_pclk1_hz(void) { return g_pclk1_hz; }
 uint32_t bsp_clock_get_pclk2_hz(void) { return g_pclk2_hz; }
+
+static uint32_t bsp_clock_timer_hz_from_apb(uint32_t pclk_hz) {
+  if (pclk_hz != g_hclk_hz) {
+    return pclk_hz * 2UL;
+  }
+  return pclk_hz;
+}
+
+uint32_t bsp_clock_get_apb1_timer_hz(void) {
+  return bsp_clock_timer_hz_from_apb(g_pclk1_hz);
+}
+
+uint32_t bsp_clock_get_apb2_timer_hz(void) {
+  return bsp_clock_timer_hz_from_apb(g_pclk2_hz);
+}

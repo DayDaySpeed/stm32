@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "common/stm_status.h"
+#include "drivers/adc1_dual_scan_dma.h"
 
 /*
  * 板级默认逻辑设备入口
@@ -55,6 +56,13 @@ stm_status_t bsp_ambient_light_read_raw_average(uint16_t *out_raw12,
 stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
                                                   uint16_t *out_therm_raw12,
                                                   uint8_t scan_count);
+
+/*
+ * 一次 ADC SCAN+DMA 同时得到光敏/热敏/红外平均原始值（0~4095）。
+ * out_samples 至少 3 个元素，对应 ADC1_DUAL_SLOT_*。
+ */
+stm_status_t bsp_analog_sensors_read_all_average(
+    uint16_t out_samples[ADC1_DUAL_SLOT_COUNT], uint8_t scan_count);
 
 /* 反射红外（PA3 / ADC1_IN3）平均原始值 0~4095。 */
 stm_status_t bsp_ir_reflect_read_raw_average(uint16_t *out_raw12,

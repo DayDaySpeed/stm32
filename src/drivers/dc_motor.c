@@ -7,6 +7,7 @@
 #include "bsp/board_pins.h"
 #include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
+#include "common/tim_timebase.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -24,49 +25,6 @@ static stm_status_t dc_motor_validate_speed(int16_t speed_permille) {
   return STM_OK;
 }
 
-static uint32_t dc_motor_duty_to_ccr1(uint16_t duty_permille,
-                                      uint32_t ticks_per_period) {
-  return ((uint32_t)duty_permille * ticks_per_period + 500U) / DC_MOTOR_SPEED_MAX;
-}
-
-static uint32_t dc_motor_tim4_input_clock_hz(void) {
-  uint32_t pclk1_hz = bsp_clock_get_pclk1_hz();
-  uint32_t tim_clk_hz = pclk1_hz;
-
-  if (pclk1_hz != bsp_clock_get_hclk_hz()) {
-    tim_clk_hz = pclk1_hz * 2UL;
-  }
-  return tim_clk_hz;
-}
-
-static stm_status_t dc_motor_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_hz,
-                                              uint16_t *psc_out, uint16_t *arr_out) {
-  if ((pwm_hz == 0U) || (tim_clk_hz < pwm_hz)) {
-    return STM_ERR_INVALID_ARG;
-  }
-
-  uint32_t total = tim_clk_hz / pwm_hz;
-
-  for (uint32_t psc = 1U; psc <= 0x10000U; psc++) {
-    if ((total % psc) != 0U) {
-      continue;
-    }
-    uint32_t arr = total / psc;
-    if ((arr >= 1U) && (arr <= 0x10000U)) {
-      *psc_out = (uint16_t)(psc - 1U);
-      *arr_out = (uint16_t)(arr - 1U);
-      return STM_OK;
-    }
-  }
-
-  {
-    uint32_t psc = (total + 0xFFFFU) / 0x10000U;
-    uint32_t arr = total / psc;
-    *psc_out = (uint16_t)(psc - 1U);
-    *arr_out = (uint16_t)(arr - 1U);
-  }
-  return STM_OK;
-}
 
 static void dc_motor_set_ain1(uint8_t level) {
   if (level != 0U) {
@@ -123,7 +81,7 @@ static void dc_motor_apply_tb6612_outputs(int16_t speed_permille) {
     }
 
     if (g_ticks_per_period != 0U) {
-      TIM4_CCR1 = dc_motor_duty_to_ccr1(duty, g_ticks_per_period);
+      TIM4_CCR1 = stm_tim_duty_permille_to_ccr(duty, g_ticks_per_period);
     }
   }
 }
@@ -170,8 +128,8 @@ stm_status_t dc_motor_init_with_config(const dc_motor_config_t *config) {
     return st;
   }
 
-  tim_clk = dc_motor_tim4_input_clock_hz();
-  st = dc_motor_resolve_timebase(tim_clk, config->pwm_hz, &psc, &arr);
+  tim_clk = bsp_clock_get_apb1_timer_hz();
+  st = stm_tim_resolve_timebase(tim_clk, config->pwm_hz, &psc, &arr);
   if (st != STM_OK) {
     return st;
   }
