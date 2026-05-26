@@ -120,6 +120,7 @@ static stm_status_t usart1_validate_config(const usart1_config_t *config) {
  *   - 配置 PA9/PA10 复用功能（TX=复用推挽输出，RX=浮空输入）；
  *   - 配置 OVER8 并使能 UE/TE/RE。
  */
+/* 见 usart1_init_with_config 头文件说明。 */
 stm_status_t usart1_init_with_config(const usart1_config_t *config) {
   uint16_t brr = 0U;
   stm_status_t st = usart1_validate_config(config);
@@ -169,6 +170,7 @@ stm_status_t usart1_init_with_config(const usart1_config_t *config) {
  *
  * 本函数只负责「开中断通路」，不负责 USART 基础初始化（波特率、GPIO、UE/TE/RE）。
  */
+/* 开 RXNEIE + NVIC USART1；须先 init。 */
 stm_status_t usart1_enable_rx_interrupt(void) {
   if (g_usart1_initialized == 0U) {
     return STM_ERR_NOT_INITIALIZED;
@@ -178,6 +180,7 @@ stm_status_t usart1_enable_rx_interrupt(void) {
   return STM_OK;
 }
 
+/* USART1_IRQHandler 入口：RXNE 时字节入环形缓冲。 */
 void usart1_irq_handler(void) {
   if ((USART1_SR & USART_SR_RXNE_BIT) == 0U) {
     return;
@@ -188,6 +191,7 @@ void usart1_irq_handler(void) {
   }
 }
 
+/* data/str：阻塞发送；未 init 返回 NOT_INITIALIZED。 */
 stm_status_t usart1_write_byte_blocking(uint8_t data) {
   if (g_usart1_initialized == 0U) {
     return STM_ERR_NOT_INITIALIZED;
@@ -198,6 +202,7 @@ stm_status_t usart1_write_byte_blocking(uint8_t data) {
   return STM_OK;
 }
 
+/* str：以 '\\0' 结尾字符串，逐字节阻塞发送。 */
 stm_status_t usart1_write_string_blocking(const char *str) {
   if (str == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -212,6 +217,7 @@ stm_status_t usart1_write_string_blocking(const char *str) {
   return STM_OK;
 }
 
+/* out：非阻塞取 1 字节；空缓冲返回 STM_ERR_BUSY。 */
 stm_status_t usart1_read_byte_try(uint8_t *out) {
   if (g_usart1_initialized == 0U) {
     return STM_ERR_NOT_INITIALIZED;
@@ -219,6 +225,7 @@ stm_status_t usart1_read_byte_try(uint8_t *out) {
   return ring_buffer_pop_byte(&g_usart1_rx_rb, out);
 }
 
+/* out/out_size：非阻塞读一行；policy 见 init 配置。 */
 stm_status_t usart1_read_line_try(char *out, uint16_t out_size) {
   static char s_line_buf[USART1_RX_BUF_SIZE];
   static uint16_t s_line_len = 0U;

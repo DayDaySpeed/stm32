@@ -22,6 +22,7 @@
 static uint32_t g_timeout_iter = I2C1_MASTER_DEFAULT_TIMEOUT_ITER;
 
 static void i2c1_gpio_apply_mode(uint32_t mode) {
+  /* mode：I2C SCL/SDA 的 CRL 复用/开漏模式字段。 */
   board_gpio_apply_crl(BOARD_GPIO_I2C1_CR_REG, BOARD_GPIO_I2C1_CR_MASK, mode);
 }
 
@@ -67,6 +68,7 @@ void i2c1_master_bus_recover(void) {
  * 等待 SR1 的 mask 字段达到 expect 值；同时拦截 NACK（AF=1）。
  * 出错路径会发 STOP，避免总线悬挂。
  */
+/* mask/expect：轮询 SR1 位域；NACK/超时自动 STOP + 总线恢复。 */
 static stm_status_t i2c1_wait_sr1(uint32_t mask, uint32_t expect) {
   for (volatile uint32_t i = 0U; i < g_timeout_iter; ++i) {
     uint32_t sr1 = I2C1_SR1;
@@ -87,6 +89,7 @@ static stm_status_t i2c1_wait_sr1(uint32_t mask, uint32_t expect) {
   return STM_ERR_TIMEOUT;
 }
 
+/* 起始前等待 SR2.BUSY 清零；超时返回 STM_ERR_BUSY。 */
 static stm_status_t i2c1_wait_not_busy(void) {
   for (volatile uint32_t i = 0U; i < g_timeout_iter; ++i) {
     if ((I2C1_SR2 & I2C_SR2_BUSY_BIT) == 0U) {
@@ -109,6 +112,7 @@ static stm_status_t i2c1_wait_not_busy(void) {
  *   [6] 重映射 + 配 GPIO：I2C1 SCL/SDA 接到 PB8/PB9，复用开漏 50MHz
  *   [7] 关 PE → 写时序寄存器 → 开 PE（PE=1 时硬件不允许改时序参数）
  */
+/* 见 i2c1_master_init 头文件说明。 */
 stm_status_t i2c1_master_init(const i2c1_master_config_t *cfg) {
   uint32_t freq_mhz = 0U;
   uint32_t ccr = 0U;
@@ -199,6 +203,7 @@ stm_status_t i2c1_master_init(const i2c1_master_config_t *cfg) {
   return STM_OK;
 }
 
+/* addr7/ctrl/payload/payload_len：见 i2c1_master_write_frame 头文件说明。 */
 stm_status_t i2c1_master_write_frame(uint8_t addr7, uint8_t ctrl,
                                      const uint8_t *payload,
                                      size_t payload_len) {

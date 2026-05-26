@@ -6,10 +6,8 @@
 #include <stdint.h>
 
 /*
- * 板级 GPIO 辅助 —— 驱动通过语义宏 + 本头文件宏/内联函数操作引脚，
- * 避免在各驱动中散落 GPIOA/PB6 等硬编码。
- *
- * 注意：GPIOx_CRL/BSRR 等是寄存器左值宏，配置操作用 macro 而非指针参数。
+ * 板级 GPIO 辅助宏/内联函数。
+ * reg/bsrr/odr 为 GPIOx_CRL/BSRR/ODR 等寄存器左值宏。
  */
 
 #define BOARD_GPIO_CRL_FIELD_POS(pin)   (((uint32_t)(pin)) * 4U)
@@ -58,14 +56,17 @@
     (odr) |= (mask);                                                           \
   } while (0)
 
+/* 使能 GPIOB 端口时钟（APB2ENR.IOPBEN）。 */
 static inline void board_gpio_enable_port_b_clock(void) {
   RCC_APB2ENR |= RCC_IOPBEN_BIT;
 }
 
+/* 使能 GPIOC 端口时钟（编码器重映射 PC6/PC7 时需要）。 */
 static inline void board_gpio_enable_port_c_clock(void) {
   RCC_APB2ENR |= RCC_IOPCEN_BIT;
 }
 
+/* mask：AFIO_MAPR 位域掩码；value：要写入的 remap 值（先清 mask 再 OR）。 */
 static inline void board_gpio_afio_apply(uint32_t mask, uint32_t value) {
   AFIO_MAPR = (AFIO_MAPR & ~mask) | value;
 }

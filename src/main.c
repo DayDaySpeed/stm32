@@ -16,8 +16,10 @@
 
 void SysTick_Handler(void) { systick_on_interrupt(); }
 
+/* 转发至 bsp_console_irq_handler → usart1_irq_handler。 */
 void USART1_IRQHandler(void) { bsp_console_irq_handler(); }
 
+/* 上电入口：时钟 → 板级 init → 电机安全态 → app。失败则 stm_fault_halt。 */
 int main(void) {
   stm_status_t st = STM_OK;
 

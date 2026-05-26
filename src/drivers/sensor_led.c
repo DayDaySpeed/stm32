@@ -53,6 +53,7 @@ static void sensor_led_apply_hw(uint16_t psc, uint16_t arr, uint16_t ldr_permill
   g_ticks_per_period = ticks;
 }
 
+/* config->pwm_hz：TIM1 载波；初始 LDR/NTC 占空 0。 */
 stm_status_t sensor_led_init_with_config(const sensor_led_config_t *config) {
   uint32_t tim_clk;
   uint16_t psc = 0U;
@@ -84,6 +85,7 @@ static stm_status_t sensor_led_validate_duty(uint16_t duty_permille) {
   return STM_OK;
 }
 
+/* duty_permille：LDR 灯 TIM1_CCR1，0..1000。 */
 stm_status_t sensor_led_set_ldr_permille(uint16_t duty_permille) {
   stm_status_t st = sensor_led_validate_duty(duty_permille);
   if (st != STM_OK) {
@@ -93,6 +95,7 @@ stm_status_t sensor_led_set_ldr_permille(uint16_t duty_permille) {
   return STM_OK;
 }
 
+/* duty_permille：NTC 灯 TIM1_CCR4，0..1000。 */
 stm_status_t sensor_led_set_ntc_permille(uint16_t duty_permille) {
   stm_status_t st = sensor_led_validate_duty(duty_permille);
   if (st != STM_OK) {

@@ -10,11 +10,13 @@
 static const char *g_fault_module = "none";
 static stm_status_t g_fault_status = STM_OK;
 
+/* module/status：记录最后一次故障信息（供调试器查看）。 */
 void stm_fault_record(const char *module, stm_status_t status) {
   g_fault_module = (module != NULL) ? module : "unknown";
   g_fault_status = status;
 }
 
+/* module/status：打印 FAULT 后死循环，不返回。 */
 __attribute__((noreturn)) void stm_fault_halt(const char *module,
                                               stm_status_t status) {
   stm_fault_record(module, status);

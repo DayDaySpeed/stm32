@@ -8,11 +8,8 @@
 #include "common/stm_status.h"
 
 /*
- * SSD1306 128×64 OLED（I2C 7 位地址 0x3C）。
- *
- * 分层：
- *   ssd1306_*        — 通用设备对象 API（可注入 bus_write）
- *   ssd1306_default_* — 板载默认实例，供 bsp_display_* 调用
+ * SSD1306 128×64 OLED（I2C 0x3C）。
+ * dev 对象 API 可注入 bus_write；default_* 为板载单例。
  */
 
 typedef stm_status_t (*ssd1306_bus_write_fn)(uint8_t addr7, uint8_t ctrl,
@@ -30,11 +27,16 @@ typedef struct {
   uint8_t initialized;
 } ssd1306_t;
 
+/* dev：设备对象；内部 init I2C 并发送 SSD1306 上电命令序列。 */
 stm_status_t ssd1306_init(ssd1306_t *dev);
+/* 清帧缓冲并 flush 到屏。 */
 stm_status_t ssd1306_clear(ssd1306_t *dev);
+/* 将 framebuffer 全屏写入 GDDRAM。 */
 stm_status_t ssd1306_flush(ssd1306_t *dev);
+/* page：0..page_count-1；col_px：列起点；text：5×7 字体字符串。 */
 stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
                                    uint16_t col_px, const char *text);
+/* fmt/ap：printf 风格；先格式化再 write_text_at。 */
 stm_status_t ssd1306_vwrite_text_atf(ssd1306_t *dev, uint16_t page,
                                      uint16_t col_px, const char *fmt,
                                      va_list ap);

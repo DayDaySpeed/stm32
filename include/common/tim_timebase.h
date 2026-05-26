@@ -6,15 +6,13 @@
 #include "common/stm_status.h"
 
 /*
- * 通用定时器 PWM 时基求解与占空比换算。
- *
- * 关系式：total_ticks = tim_clk_hz / pwm_hz = (PSC+1)(ARR+1)
- * 占空比千分比 → CCR：duty_permille / 1000 * ticks_per_period（四舍五入）
+ * 定时器 PWM 时基：由 tim_clk 与 pwm_hz 反推 PSC/ARR。
  */
 
+/* tim_clk_hz：定时器输入时钟；pwm_hz：目标 PWM 频率；psc_out/arr_out：输出分频。 */
 stm_status_t stm_tim_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_hz,
                                       uint16_t *psc_out, uint16_t *arr_out);
-
+/* duty_permille：0..1000；ticks_per_period：ARR+1；返回 CCR 值。 */
 uint32_t stm_tim_duty_permille_to_ccr(uint16_t duty_permille,
                                       uint32_t ticks_per_period);
 

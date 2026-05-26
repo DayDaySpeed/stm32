@@ -366,6 +366,7 @@ static void tasks(void) {
   }
 }
 
+/* 见 app_init 头文件说明。 */
 stm_status_t app_init(void) {
   stm_status_t st = STM_OK;
 
@@ -399,6 +400,7 @@ stm_status_t app_init(void) {
 /* SSD1306 屏幕共 8 个 page（0..7），每行 8 像素高。 */
 #define APP_OLED_PAGE_COUNT     (8U)
 
+/* 主循环：周期任务 + 串口行回显 OLED；不返回。 */
 void app_run_forever(void) {
   char line[64];
   /* 当前要写入的 page 行；每收到一行串口输入就写一行并 ++。

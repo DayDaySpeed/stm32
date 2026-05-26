@@ -2,8 +2,8 @@
 #define BSP_BOARD_INIT_H
 
 /*
- * 板级最小硬件准备：使能本板用到的 APB2 外设时钟等。
- * 须在 USART1 / SSD1306 等驱动初始化之前调用一次（通常由 main 最先调用）。
+ * 板级最小硬件准备：使能本板 AHB/APB1/APB2 外设时钟。
+ * 须在 USART/ADC/TIM/I2C 等驱动 init 之前调用一次。
  */
 void bsp_board_init(void);
 

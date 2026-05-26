@@ -34,6 +34,7 @@ static void dc_motor_set_ain2(uint8_t level) {
   board_gpio_write(BOARD_GPIO_MOTOR_BSRR_REG, BOARD_GPIO_MOTOR_AIN2_PIN, level);
 }
 
+/* 上电最早：PB 电机脚推挽输出并全拉低。 */
 void dc_motor_gpio_safe_early(void) {
   board_gpio_enable_port_b_clock();
   board_gpio_apply_crl(GPIOB_CRL, BOARD_GPIO_MOTOR_GPIO_MASK,
@@ -101,6 +102,7 @@ static void dc_motor_tim4_apply_hw(uint16_t psc, uint16_t arr, int16_t speed_per
   TIM4_CR1 |= TIM_CR1_CEN_BIT;
 }
 
+/* config：PWM 频率与初始速度；配置 TIM4 + TB6612。 */
 stm_status_t dc_motor_init_with_config(const dc_motor_config_t *config) {
   uint32_t tim_clk = 0U;
   uint16_t psc = 0U;
@@ -131,6 +133,7 @@ stm_status_t dc_motor_init_with_config(const dc_motor_config_t *config) {
   return STM_OK;
 }
 
+/* speed_permille：-1000..1000，更新 AIN1/AIN2 与 CCR1。 */
 stm_status_t dc_motor_set_speed_signed(int16_t speed_permille) {
   stm_status_t st = dc_motor_validate_speed(speed_permille);
   if (st != STM_OK) {
@@ -145,6 +148,7 @@ stm_status_t dc_motor_set_speed_signed(int16_t speed_permille) {
   return STM_OK;
 }
 
+/* out_speed_permille：输出缓存的当前速度。 */
 stm_status_t dc_motor_get_speed_signed(int16_t *out_speed_permille) {
   if (out_speed_permille == NULL) {
     return STM_ERR_INVALID_ARG;

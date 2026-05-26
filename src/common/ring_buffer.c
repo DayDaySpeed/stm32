@@ -14,6 +14,7 @@ static uint16_t ring_buffer_next(const ring_buffer_t *rb, uint16_t idx) {
   return next;
 }
 
+/* rb/backing/capacity：见 ring_buffer_init 头文件说明。 */
 stm_status_t ring_buffer_init(ring_buffer_t *rb, uint8_t *backing,
                               uint16_t capacity) {
   if ((rb == NULL) || (backing == NULL) || (capacity < 2U)) {
@@ -26,6 +27,7 @@ stm_status_t ring_buffer_init(ring_buffer_t *rb, uint8_t *backing,
   return STM_OK;
 }
 
+/* value：入队字节；满返回 STM_ERR_OVERFLOW。 */
 stm_status_t ring_buffer_push_byte(ring_buffer_t *rb, uint8_t value) {
   uint16_t next = 0U;
   if (rb == NULL) {
@@ -40,6 +42,7 @@ stm_status_t ring_buffer_push_byte(ring_buffer_t *rb, uint8_t value) {
   return STM_OK;
 }
 
+/* out：出队字节；空返回 STM_ERR_BUSY。 */
 stm_status_t ring_buffer_pop_byte(ring_buffer_t *rb, uint8_t *out) {
   if ((rb == NULL) || (out == NULL)) {
     return STM_ERR_INVALID_ARG;

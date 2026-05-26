@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* tim_clk_hz/pwm_hz：反推 PSC/ARR；psc_out/arr_out 输出寄存器值。 */
 stm_status_t stm_tim_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_hz,
                                       uint16_t *psc_out, uint16_t *arr_out) {
   if ((psc_out == NULL) || (arr_out == NULL)) {
@@ -38,6 +39,7 @@ stm_status_t stm_tim_resolve_timebase(uint32_t tim_clk_hz, uint32_t pwm_hz,
   return STM_OK;
 }
 
+/* duty_permille：0..1000；ticks_per_period：ARR+1。 */
 uint32_t stm_tim_duty_permille_to_ccr(uint16_t duty_permille,
                                       uint32_t ticks_per_period) {
   return ((uint32_t)duty_permille * ticks_per_period + 500U) / 1000U;

@@ -7,8 +7,10 @@
 
 static stm_log_write_fn g_stm_log_writer;
 
+/* writer：日志输出回调；NULL 关闭日志。 */
 void stm_log_set_writer(stm_log_write_fn writer) { g_stm_log_writer = writer; }
 
+/* text：以 '\\0' 结尾字符串。 */
 stm_status_t stm_log_write(const char *text) {
   if (text == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -19,6 +21,7 @@ stm_status_t stm_log_write(const char *text) {
   return g_stm_log_writer(text);
 }
 
+/* module/status：输出 "module: STATUS\\r\\n"。 */
 stm_status_t stm_log_write_status(const char *module, stm_status_t status) {
   stm_status_t st = STM_OK;
 

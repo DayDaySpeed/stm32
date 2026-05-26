@@ -25,6 +25,7 @@
 
 static uint8_t g_tim3_encoder_initialized;
 
+/* 见 tim3_encoder_init_with_config 头文件说明。 */
 stm_status_t tim3_encoder_init_with_config(const tim3_encoder_config_t *config) {
   if (config == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -85,6 +86,7 @@ stm_status_t tim3_encoder_init_with_config(const tim3_encoder_config_t *config) 
   return STM_OK;
 }
 
+/* out_count：读取 TIM3_CNT 转为 int16_t。 */
 stm_status_t tim3_encoder_read_count(int16_t *out_count) {
   if (out_count == NULL) {
     return STM_ERR_INVALID_ARG;

@@ -128,6 +128,7 @@ static stm_status_t thermistor_lookup_temperature_celsius_x10(
   return STM_ERR_INVALID_ARG;
 }
 
+/* config：分压拓扑与固定电阻；仅保存参数不采 ADC。 */
 stm_status_t thermistor_init_with_config(const thermistor_config_t *config) {
   stm_status_t st = thermistor_validate_config(config);
   if (st != STM_OK) {
@@ -139,6 +140,7 @@ stm_status_t thermistor_init_with_config(const thermistor_config_t *config) {
   return STM_OK;
 }
 
+/* raw12：12 位 ADC；out_celsius_x10：查表插值温度 0.1°C。 */
 stm_status_t thermistor_read_temperature_from_raw_blocking(
     uint16_t raw12, int16_t *out_celsius_x10) {
   uint32_t resistance_ohms = 0U;

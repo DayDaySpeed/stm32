@@ -28,6 +28,7 @@ static void buzzer_apply_level(uint8_t on) {
   }
 }
 
+/* config->active_high：极性；GPIO 推挽输出默认关。 */
 stm_status_t buzzer_init_with_config(const buzzer_config_t *config) {
   if (config == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -58,6 +59,7 @@ stm_status_t buzzer_off(void) {
   return STM_OK;
 }
 
+/* duration_ms：阻塞鸣叫时长（systick_delay_ms）。 */
 stm_status_t buzzer_beep_blocking(uint32_t duration_ms) {
   stm_status_t st = buzzer_on();
   if (st != STM_OK) {

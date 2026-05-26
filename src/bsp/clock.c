@@ -124,6 +124,7 @@ static stm_status_t apply_hse_pll_72mhz(void) {
   return STM_OK;
 }
 
+/* profile：HSI 8MHz 或 HSE+PLL 72MHz；更新频率缓存。 */
 stm_status_t bsp_clock_apply_profile(bsp_clock_profile_t profile) {
   if (profile == BSP_CLOCK_PROFILE_HSI_8MHZ) {
     return apply_hsi_8mhz();

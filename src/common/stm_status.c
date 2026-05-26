@@ -3,6 +3,7 @@
  */
 #include "common/stm_status.h"
 
+/* status：状态码 → 英文字符串。 */
 const char *stm_status_name(stm_status_t status) {
   switch (status) {
   case STM_OK:

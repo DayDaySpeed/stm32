@@ -42,10 +42,12 @@ static adc1_dual_config_t s_config = {
 };
 
 static void adc1_dual_adc_stabilize_delay(void) {
+  /* 上电/校准前短延时，等待 ADC 模拟部分稳定。 */
   for (volatile uint32_t n = 0U; n < ADC1_DUAL_CALIB_DELAY_LOOPS; n++) {
   }
 }
 
+/* mask：CR2 中待清零位；超时返回 STM_ERR_TIMEOUT。 */
 static stm_status_t adc1_dual_wait_cr2_clear(uint32_t mask) {
   uint32_t t = ADC1_DUAL_FLAG_TIMEOUT_LOOPS;
   while ((ADC1_CR2 & mask) != 0U) {
@@ -57,6 +59,7 @@ static stm_status_t adc1_dual_wait_cr2_clear(uint32_t mask) {
   return STM_OK;
 }
 
+/* config：时钟源与 ADC 预分频；校验枚举合法性。 */
 static stm_status_t adc1_dual_validate_config(const adc1_dual_config_t *config) {
   if (config == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -76,6 +79,7 @@ static stm_status_t adc1_dual_validate_config(const adc1_dual_config_t *config) 
   }
 }
 
+/* 按 PCLK2 自动选择 ADCPRE，使 ADCCLK ≤ 14MHz。 */
 static stm_status_t adc1_dual_configure_adc_clock_auto(void) {
   uint32_t pclk2_hz = bsp_clock_get_pclk2_hz();
   uint32_t adcpre_bits = RCC_CFGR_ADCPRE_DIV2;
@@ -100,6 +104,7 @@ static stm_status_t adc1_dual_configure_adc_clock_auto(void) {
   return STM_OK;
 }
 
+/* prescaler：固定 DIV2/4/6/8；超 14MHz 返回 INVALID_ARG。 */
 static stm_status_t adc1_dual_configure_adc_clock_manual(
     adc1_dual_prescaler_t prescaler) {
   uint32_t pclk2_hz = bsp_clock_get_pclk2_hz();
@@ -139,6 +144,7 @@ static stm_status_t adc1_dual_configure_adc_clock_manual(
   return STM_OK;
 }
 
+/* config->adc_prescaler：AUTO 或手动分频。 */
 static stm_status_t adc1_dual_configure_adc_clock(
     const adc1_dual_config_t *config) {
   if (config->adc_prescaler == ADC1_DUAL_PRESCALER_AUTO) {
@@ -147,7 +153,7 @@ static stm_status_t adc1_dual_configure_adc_clock(
   return adc1_dual_configure_adc_clock_manual(config->adc_prescaler);
 }
 
-//校准
+/* RSTCAL + CAL 两步校准；须已 ADON。 */
 static stm_status_t adc1_dual_adc_calibrate(void) {
   ADC1_CR2 |= ADC_CR2_ADON_BIT;
   adc1_dual_adc_stabilize_delay();
@@ -164,11 +170,13 @@ static stm_status_t adc1_dual_adc_calibrate(void) {
   return adc1_dual_wait_cr2_clear(ADC_CR2_CAL_BIT);
 }
 
+/* 三路 ADC 引脚设为模拟输入（由 board_pins 解析）。 */
 static void adc1_dual_configure_gpio_analog(void) {
   board_gpio_apply_crl(BOARD_GPIO_ADC_CR_REG, BOARD_GPIO_ADC_CR_MASK,
                        BOARD_GPIO_ADC_ANALOG_MODE);
 }
 
+/* 配置 SMPR 239.5 周期采样 + SQR 序列 photo→therm→ir。 */
 static void adc1_dual_configure_scan_sequence(void) {
   const uint32_t ch_photo = ADC1_DUAL_CH_PHOTO;
   const uint32_t ch_therm = ADC1_DUAL_CH_THERM;
@@ -186,12 +194,13 @@ static void adc1_dual_configure_scan_sequence(void) {
               ADC_SQR3_SQ3(ADC1_DUAL_CH_IR_REFLECT);
 }
 
+/* 关闭 DMA1 Ch1 并清 TCIF1。 */
 static void adc1_dual_dma_disable_channel(void) {
-  //开启通道
   DMA1_CCR1 &= ~DMA_CCR_EN_BIT;
   DMA1_IFCR = DMA_IFCR_CTCIF1_BIT;
 }
 
+/* buffer：DMA 目标；halfword_count：半字个数（= 通道数）。 */
 static void adc1_dual_dma_setup_transfer(uint16_t *buffer, uint16_t halfword_count) {
   adc1_dual_dma_disable_channel();
 
@@ -201,6 +210,7 @@ static void adc1_dual_dma_setup_transfer(uint16_t *buffer, uint16_t halfword_cou
   DMA1_CCR1 = DMA_CCR_MINC_BIT | DMA_CCR_PSIZE_16_BIT | DMA_CCR_MSIZE_16_BIT;
 }
 
+/* 轮询 TCIF1 直至传输完成或超时。 */
 static stm_status_t adc1_dual_dma_wait_tc(void) {
   uint32_t t = ADC1_DUAL_DMA_TIMEOUT_LOOPS;
   while ((DMA1_ISR & DMA_ISR_TCIF1_BIT) == 0U) {
@@ -213,6 +223,7 @@ static stm_status_t adc1_dual_dma_wait_tc(void) {
   return STM_OK;
 }
 
+/* 一次 SWSTART + DMA 阻塞采满 buffer；完成后关 DMA。 */
 static stm_status_t adc1_dual_start_scan_dma_blocking(uint16_t *buffer,
                                                       uint16_t halfword_count) {
   stm_status_t st = STM_OK;
@@ -232,6 +243,7 @@ static stm_status_t adc1_dual_start_scan_dma_blocking(uint16_t *buffer,
   return st;
 }
 
+/* 见 adc1_dual_init_with_config 头文件说明。 */
 stm_status_t adc1_dual_init_with_config(const adc1_dual_config_t *config) {
   stm_status_t st = adc1_dual_validate_config(config);
   if (st != STM_OK) {
@@ -275,6 +287,7 @@ stm_status_t adc1_dual_init_with_config(const adc1_dual_config_t *config) {
   return STM_OK;
 }
 
+/* out_samples：三路平均 raw；scan_count：重复扫描次数。 */
 stm_status_t adc1_dual_read_all_average_blocking(
     uint16_t out_samples[ADC1_DUAL_SLOT_COUNT], uint8_t scan_count) {
   uint32_t sum_photo = 0U;
@@ -308,6 +321,7 @@ stm_status_t adc1_dual_read_all_average_blocking(
   return STM_OK;
 }
 
+/* out_pair[0]=photo, [1]=therm；内部仍扫三路。 */
 stm_status_t adc1_dual_read_pair_average_blocking(uint16_t out_pair[2],
                                                   uint8_t scan_count) {
   uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};

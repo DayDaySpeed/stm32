@@ -6,10 +6,7 @@
 #include "common/stm_status.h"
 
 /*
- * 反射红外传感器（TCRT5000 类）—— ADC1 IN3 槽位。
- *
- * 本板实测：远离 raw~4000，靠近 raw~100（越低越近）。
- * init 仅做参数校验与标记；实际采样走 adc1_dual_read_all_average_blocking。
+ * 反射红外 ADC 通道包装（槽位 ADC1_DUAL_SLOT_IR_REFLECT）。
  */
 
 typedef enum {
@@ -29,7 +26,9 @@ typedef struct {
   ir_reflect_adc_prescaler_t adc_prescaler;
 } ir_reflect_config_t;
 
+/* 校验 config 并标记模块已就绪；须在 adc1_dual_init 之后。 */
 stm_status_t ir_reflect_init_with_config(const ir_reflect_config_t *config);
+/* out_raw12：平均 raw 0..4095；sample_count：扫描平均次数，须 >0。 */
 stm_status_t ir_reflect_read_raw_average_blocking(uint16_t *out_raw12,
                                                   uint8_t sample_count);
 

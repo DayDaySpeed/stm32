@@ -226,6 +226,7 @@ static uint32_t ssd1306_vformat(char *dst, uint32_t cap, const char *fmt,
   return idx;
 }
 
+/* dev：设备对象；init I2C + 发送 SSD1306 上电序列并 flush。 */
 stm_status_t ssd1306_init(ssd1306_t *dev) {
   static const uint8_t init_cmds[] = {
       0xAEU, 0xD5U, 0x80U, 0xA8U, 0x3FU, 0xD3U, 0x00U, 0x40U, 0x8DU,
@@ -260,6 +261,7 @@ stm_status_t ssd1306_init(ssd1306_t *dev) {
   return ssd1306_flush(dev);
 }
 
+/* dev：清 framebuffer 并整屏刷新。 */
 stm_status_t ssd1306_clear(ssd1306_t *dev) {
   if ((dev == NULL) || (dev->framebuffer == NULL)) {
     return STM_ERR_INVALID_ARG;
@@ -328,6 +330,7 @@ stm_status_t ssd1306_putc(ssd1306_t *dev, uint8_t c) {
 #endif
 }
 
+/* dev：将 framebuffer 全屏写入 GDDRAM。 */
 stm_status_t ssd1306_flush(ssd1306_t *dev) {
   static const uint8_t setwin[] = {0x21U, 0x00U, 0x7FU, 0x22U, 0x00U, 0x07U};
   stm_status_t st = STM_OK;
@@ -362,6 +365,7 @@ stm_status_t ssd1306_write_text(ssd1306_t *dev, const char *text) {
   return STM_OK;
 }
 
+/* page/col_px/text：指定行列写入 5×7 文本。 */
 stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
                                    uint16_t col_px, const char *text) {
   uint8_t scrolled = 0U;
@@ -395,6 +399,7 @@ stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
   return ssd1306_write_text(dev, text);
 }
 
+/* fmt/ap：printf 风格格式化后 write_text_at。 */
 stm_status_t ssd1306_vwrite_text_atf(ssd1306_t *dev, uint16_t page,
                                      uint16_t col_px, const char *fmt,
                                      va_list ap) {
@@ -416,6 +421,7 @@ stm_status_t ssd1306_vwrite_text_atf(ssd1306_t *dev, uint16_t page,
   return ssd1306_write_text_at(dev, page, col_px, text_buf);
 }
 
+/* 板载默认 ssd1306_t 单例的 init/clear/vwrite 包装。 */
 stm_status_t ssd1306_default_vwrite_text_atf(uint16_t page, uint16_t col_px,
                                              const char *fmt, va_list ap) {
   return ssd1306_vwrite_text_atf(&g_default_dev, page, col_px, fmt, ap);

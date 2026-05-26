@@ -11,6 +11,7 @@
 
 static uint8_t s_initialized;
 
+/* config：校验 ADC 参数；标记模块就绪（采样由 adc1_dual 负责）。 */
 stm_status_t ir_reflect_init_with_config(const ir_reflect_config_t *config) {
   if (config == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -34,6 +35,7 @@ stm_status_t ir_reflect_init_with_config(const ir_reflect_config_t *config) {
   return STM_OK;
 }
 
+/* out_raw12：IR 槽平均 raw；sample_count：扫描次数。 */
 stm_status_t ir_reflect_read_raw_average_blocking(uint16_t *out_raw12,
                                                   uint8_t sample_count) {
   uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};

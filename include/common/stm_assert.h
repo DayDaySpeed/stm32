@@ -16,6 +16,7 @@ __attribute__((noreturn)) void stm_fault_halt(const char *module,
 #endif
 
 #if STM_ASSERT_LEVEL > 0
+/* expr：必须为真；module：故障模块名。 */
 #define STM_ASSERT(expr, module)                                                \
   do {                                                                          \
     if (!(expr)) {                                                              \
@@ -23,6 +24,7 @@ __attribute__((noreturn)) void stm_fault_halt(const char *module,
     }                                                                           \
   } while (0)
 
+/* status：须为 STM_OK；否则 halt。 */
 #define STM_ASSERT_OK(status, module)                                           \
   do {                                                                          \
     stm_status_t s_assert_status_ = (status);                                   \

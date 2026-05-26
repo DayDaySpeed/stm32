@@ -74,6 +74,7 @@ static void breathing_led_apply_hw(uint16_t psc, uint16_t arr,
   g_ticks_per_period = ticks;
 }
 
+/* 见 breathing_led_init_with_config 头文件说明。 */
 stm_status_t breathing_led_init_with_config(const breathing_led_config_t *config) {
   stm_status_t st = breathing_led_validate_config(config);
   if (st != STM_OK) {
@@ -94,6 +95,7 @@ stm_status_t breathing_led_init_with_config(const breathing_led_config_t *config
   return STM_OK;
 }
 
+/* duty_permille：0..1000，仅更新 TIM2_CCR1。 */
 stm_status_t breathing_led_set_duty_permille(uint16_t duty_permille) {
   stm_status_t st = breathing_led_validate_duty(duty_permille);
   if (st != STM_OK) {
