@@ -151,3 +151,160 @@ C 里常见 `__enable_irq()` / `__disable_irq()` 与 PRIMASK 相关。本项目�
 - USART1：`src/drivers/usart1.c` 中 `usart1_enable_rx_interrupt()`。
 - 向量表与弱符号：`startup/startup_stm32f103c8tx.s`。
 - Handler 转发：`src/main.c`。
+
+---
+
+# English
+
+# NVIC Guide (This Project + Cortex-M3 General)
+
+This document covers **Nested Vectored Interrupt Controller (NVIC)** registers and bits **actually used** in this STM32F103 project, **recommended enable order**, and related concepts (vector table, system exceptions, priority).
+
+---
+
+## 1. What NVIC Does on Cortex-M3
+
+- **External interrupts (IRQ)**: From on-chip peripherals (TIM, USART, etc.). NVIC arbitrates; the CPU fetches the `IRQHandler` address from the **vector table** and jumps there.
+- **System exceptions**: e.g. `NMI`, `HardFault`, `SysTick`—**not** enabled via NVIC `ISER`. **SysTick** is enabled in **`SYST_CSR`**; it still has a dedicated vector entry (see §8).
+- **Nesting**: Multiple pending IRQs are ordered by **priority**; higher priority can preempt lower (default configuration).
+
+This project maps NVIC in `include/bsp/stm32f103_regs.h`:
+
+| Symbol | Address | Meaning |
+|--------|---------|---------|
+| `NVIC_BASE` | `0xE000E100` | NVIC register block start |
+| `NVIC_ISER0` | `NVIC_BASE + 0x00` | Interrupt Set-Enable register 0 (IRQ 0–31) |
+| `NVIC_ISER1` | `NVIC_BASE + 0x04` | Interrupt Set-Enable register 1 (IRQ 32–63) |
+
+> **Read-modify-write note**: Writing `1` to `ISER` **sets** enable for that IRQ; writing `0` has no effect (does not disable). Use **`ICER`** to disable (not wrapped in this project).
+
+---
+
+## 2. NVIC Used in This Project: Only `ISER`
+
+### 2.1 TIM2 update interrupt
+
+- **STM32F103 vector**: `TIM2` → **IRQn = 28** (matches `startup_stm32f103c8tx.s` “IRQ28 = TIM2”).
+- **Register**: `NVIC_ISER0` (`28 / 32 = 0`).
+- **Bit**: `NVIC_TIM2_IRQ_BIT = (1U << 28)` — **ISER0 bit 28**.
+- **Code**: `src/drivers/tim2.c` sets `NVIC_ISER0 |= NVIC_TIM2_IRQ_BIT` after `TIM2_DIER` (update interrupt enable), then starts the counter.
+
+### 2.2 USART1 receive interrupt
+
+- **IRQn = 37**.
+- **Register**: `NVIC_ISER1` (`37 / 32 = 1`).
+- **Bit**: `NVIC_USART1_IRQ_BIT = (1U << 5)` — **ISER1 bit 5** (`37 % 32 = 5`, not “USART1 peripheral bit 5”).
+- **Code**: `src/drivers/usart1.c` `usart1_enable_rx_interrupt()` sets `USART_CR1_RXNEIE` then `NVIC_ISER1 |= NVIC_USART1_IRQ_BIT`.
+
+### 2.3 Summary table
+
+| Peripheral | IRQn | ISER index | Register | Bit to set |
+|------------|------|------------|----------|------------|
+| TIM2 | 28 | 0 | `NVIC_ISER0` | bit 28 |
+| USART1 | 37 | 1 | `NVIC_ISER1` | bit 5 |
+
+Formulas:
+
+- `ISER index = IRQn / 32`
+- `bit index = IRQn % 32`
+
+---
+
+## 3. Recommended IRQ/NVIC Enable Flow (Matches This Project)
+
+For **peripheral IRQ**:
+
+1. **Clock and GPIO**: RCC enable, pin mux/mode (`bsp_board_init` / drivers).
+2. **Configure peripheral**: baud, PSC/ARR, DMA, etc.; avoid paths that fire immediately if possible.
+3. **Clear pending flags** if needed: e.g. clear timer `UIF` before NVIC to avoid spurious entry.
+4. **Enable peripheral interrupt source**: e.g. `TIM2_DIER.UIE`, `USART1_CR1.RXNEIE`.
+5. **Then enable NVIC channel**: `NVIC_ISERx |= (1 << (IRQn % 32))`.
+6. **Last, start continuous activity**: e.g. `TIM2_CR1.CEN` (this project sets `CEN` after `NVIC_ISER0`).
+
+USART1: `RXNEIE` then `NVIC_ISER1` in `usart1_enable_rx_interrupt()`—same principle.
+
+---
+
+## 4. Vector Table and Handlers in This Project
+
+Vector table: `startup/startup_stm32f103c8tx.s` `g_pfnVectors`. Related entries:
+
+- Index **44** (0-based word 45): `TIM2_IRQHandler` → **IRQ28**.
+- Index **53**: `USART1_IRQHandler` → **IRQ37**.
+
+Strong symbols in `src/main.c`:
+
+- `TIM2_IRQHandler` → `tim2_irq_handler()`
+- `USART1_IRQHandler` → `usart1_irq_handler()`
+
+If NVIC is enabled but the vector still points to `Default_Handler`, you get `b .` loop—check link map and symbol names vs startup file.
+
+---
+
+## 5. Full NVIC Register Map (Cortex-M3, Common)
+
+Base **`0xE000E100`**. Besides `ISER`, the manual lists ( **this project code uses only ISER** ):
+
+| Offset | Name | Brief role |
+|--------|------|------------|
+| `0x000` | `ISER[0]` | Write 1 to enable IRQ 0–31 |
+| `0x004` | `ISER[1]` | Write 1 to enable IRQ 32–63 |
+| `0x080` | `ICER[0]` | Write 1 to **disable** IRQ 0–31 |
+| `0x084` | `ICER[1]` | Write 1 to **disable** IRQ 32–63 |
+| `0x100` | `ISPR[0]` | Write 1 to **set** pending (rare) |
+| `0x180` | `ICPR[0]` | Write 1 to **clear** pending |
+| `0x200` | `IABR[0]` | **Read-only**: active (executing) |
+| `0x300+` | `IPR[n]` | **Priority**, 1 byte per IRQ (F103 often 4 effective bits) |
+
+Each IRQ uses **1 bit** in `ISER/ICER/...`: bit = `IRQn % 32`, register = `IRQn / 32`.
+
+---
+
+## 6. Priority (`IPR`) and Preemption (Defaults in This Project)
+
+- Each IRQ has one byte in `IPR`; STM32F103 often uses **4 effective priority bits** (see RM).
+- **After reset**, many IRQs share priority; same priority → **no nesting** among them.
+- **Priority grouping** is in **SCB `AIRCR`** (`0xE000ED0C`) **PRIGROUP** field. This project **does not** set `AIRCR` (chip default).
+- To make TIM2 higher than USART1, write the corresponding `NVIC_IPR` byte and know current PRIGROUP split.
+
+---
+
+## 7. CPU Special Registers (Concept)
+
+| Name | Role |
+|------|------|
+| **PRIMASK** | Mask configurable-priority exceptions except NMI/HardFault (global effect). |
+| **FAULTMASK** | Stronger fault masking (rare). |
+| **BASEPRI** | Mask IRQs with priority **≥** threshold (fine critical sections). |
+
+`__enable_irq()` / `__disable_irq()` relate to PRIMASK. This project does not call them explicitly in drivers.
+
+---
+
+## 8. SysTick vs NVIC (This Project)
+
+- **SysTick** is **exception 15** (`SysTick_Handler`), **not** an `ISER` IRQn.
+- `systick_init_1ms()` configures `SYST_RVR` / `SYST_CVR` / `SYST_CSR` in `src/drivers/systick.c`.
+- SysTick **priority** is in **`SHPR3`** (core), not NVIC `IPR`; project leaves default.
+
+So in this project **“enable NVIC”** mainly means `ISER` for TIM2/USART1; SysTick is a separate path.
+
+---
+
+## 9. Debug Checklist (Project-Related)
+
+1. **Wrong IRQn / ISER bit** — USART1 is **ISER1 bit 5**, not ISER0.
+2. **NVIC on but no peripheral IRQ source** — need `UIE` / `RXNEIE`.
+3. **Pending not cleared** — timer update flag can re-enter immediately.
+4. **Wrong handler name** — must match startup `.word XXX_IRQHandler`.
+5. **Global IRQ off** — unmatched `__disable_irq()` blocks ISRs.
+
+---
+
+## 10. Code Index
+
+- NVIC macros: `include/bsp/stm32f103_regs.h`
+- TIM2: `src/drivers/tim2.c`
+- USART1: `src/drivers/usart1.c` `usart1_enable_rx_interrupt()`
+- Vector table: `startup/startup_stm32f103c8tx.s`
+- Handler forwarding: `src/main.c`

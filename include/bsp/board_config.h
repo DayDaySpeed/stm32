@@ -6,19 +6,21 @@
 /*
  * 板级可调参数（用户改这里即可，勿改驱动 / app 源码）
  *
+ * 引脚分配与复用选项见 include/bsp/board_pin_mux.h
+ *
  * 编码器方向：
  *   TIM3_ENCODER_DIR_NORMAL   — 默认：A 超前 B 时 CNT 增加
  *   TIM3_ENCODER_DIR_INVERTED — 若拧旋钮时 ENC 减少、或电机加减速反了，换这个
  *
  * 也可对调编码器 A/B 接线（PA6↔PA7），效果与 INVERTED 类似。
  */
-#define BOARD_WHEEL_ENCODER_DIRECTION TIM3_ENCODER_DIR_NORMAL
+#define BOARD_WHEEL_ENCODER_DIRECTION TIM3_ENCODER_DIR_INVERTED
 
 /*
  * 电机正反转与编码器：若顺时针应反转，改为 1。
  * 仅交换 TB6612 AIN1/AIN2 语义，不改 AO1/AO2 接线。
  */
-#define BOARD_MOTOR_REVERSE_SIGN      (0U)
+#define BOARD_MOTOR_REVERSE_SIGN      (1U)
 
 /*
  * 有源蜂鸣器触发极性（三脚模块 VCC/GND/S）：

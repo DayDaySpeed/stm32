@@ -9,7 +9,7 @@
 | 时钟 / RCC | [topics/clock.md](../topics/clock.md) | [bsp/clock.md](../bsp/clock.md) |
 | I2C / SSD1306 | [topics/I2C.md](../topics/I2C.md) | [i2c1_master.md](./i2c1_master.md)、[ssd1306_oled.md](./ssd1306_oled.md) |
 | USART / NVIC | [topics/USART.md](../topics/USART.md)、[topics/NVIC.md](../topics/NVIC.md) | [usart1.md](./usart1.md) |
-| PWM | [topics/pwm.md](../topics/pwm.md) | [pwm.md](./pwm.md)、[dc_motor.md](./dc_motor.md)、[sensor_led.md](./sensor_led.md) |
+| PWM | [topics/pwm.md](../topics/pwm.md) | [breathing_led.md](./breathing_led.md)、[dc_motor.md](./dc_motor.md)、[sensor_led.md](./sensor_led.md) |
 | 编码器 | [topics/encoder.md](../topics/encoder.md) | [encoder.md](./encoder.md) |
 | ADC | [topics/adc.md](../topics/adc.md) | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) 及传感器薄封装 |
 
@@ -18,7 +18,7 @@
 | 模块 | 文档 | 源文件 |
 |------|------|--------|
 | SysTick 毫秒节拍 | [systick.md](./systick.md) | `systick.c` |
-| TIM2 状态灯 PWM | [pwm.md](./pwm.md) | `pwm.c` |
+| 呼吸灯（TIM2 / PA0） | [breathing_led.md](./breathing_led.md) | `breathing_led.c` |
 | TIM3 正交编码器 | [encoder.md](./encoder.md) | `encoder.c` |
 | TB6612 直流电机 | [dc_motor.md](./dc_motor.md) | `dc_motor.c` |
 | ADC1 三路 SCAN+DMA | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) | `adc1_dual_scan_dma.c` |
@@ -37,3 +37,47 @@
 2. [编码规范](../CODING_STYLE.md)
 3. 按外设选读上表对应文档
 4. 应用层用法见 [board_devices](../bsp/board_devices.md) 与 `src/app/app.c`
+
+---
+
+# English
+
+# Driver Module Documentation
+
+This directory contains topic-specific documentation for `src/drivers/`. For the HAL layer (I2C), see [../hal/README.md](../hal/README.md). Each document covers: driver purpose, API and parameters, implementation approach, usage examples, and common pitfalls.
+
+## Theory Topics (Complementary to API Docs)
+
+| Topic | Theory Doc | API in This Directory |
+|------|----------|------------|
+| Clock / RCC | [topics/clock.md](../topics/clock.md) | [bsp/clock.md](../bsp/clock.md) |
+| I2C / SSD1306 | [topics/I2C.md](../topics/I2C.md) | [i2c1_master.md](./i2c1_master.md), [ssd1306_oled.md](./ssd1306_oled.md) |
+| USART / NVIC | [topics/USART.md](../topics/USART.md), [topics/NVIC.md](../topics/NVIC.md) | [usart1.md](./usart1.md) |
+| PWM | [topics/pwm.md](../topics/pwm.md) | [breathing_led.md](./breathing_led.md), [dc_motor.md](./dc_motor.md), [sensor_led.md](./sensor_led.md) |
+| Encoder | [topics/encoder.md](../topics/encoder.md) | [encoder.md](./encoder.md) |
+| ADC | [topics/adc.md](../topics/adc.md) | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) and thin sensor wrappers |
+
+## Document Index
+
+| Module | Document | Source File |
+|------|------|--------|
+| SysTick millisecond tick | [systick.md](./systick.md) | `systick.c` |
+| Breathing LED (TIM2 / PA0) | [breathing_led.md](./breathing_led.md) | `breathing_led.c` |
+| TIM3 quadrature encoder | [encoder.md](./encoder.md) | `encoder.c` |
+| TB6612 DC motor | [dc_motor.md](./dc_motor.md) | `dc_motor.c` |
+| ADC1 triple-channel SCAN+DMA | [adc1_dual_scan_dma.md](./adc1_dual_scan_dma.md) | `adc1_dual_scan_dma.c` |
+| Photoresistor | [photoresistor.md](./photoresistor.md) | `photoresistor.c` |
+| NTC thermistor | [thermistor.md](./thermistor.md) | `thermistor.c` |
+| Reflective IR | [ir_reflect.md](./ir_reflect.md) | `ir_reflect.c` |
+| Active buzzer | [buzzer.md](./buzzer.md) | `buzzer.c` |
+| Sensor indicator LED | [sensor_led.md](./sensor_led.md) | `sensor_led.c` |
+| USART1 console | [usart1.md](./usart1.md) | `usart1.c` |
+| SSD1306 OLED | [ssd1306_oled.md](./ssd1306_oled.md) | `ssd1306_oled.c` + `oled_font5x7.c` |
+| I2C1 master HAL | [i2c1_master.md](./i2c1_master.md) | `i2c1_master.c` |
+
+## Recommended Reading Order
+
+1. [BSP layer](../bsp/README.md) and [driver interface conventions](../DRIVER_API_GUIDE.md)
+2. [Coding style](../CODING_STYLE.md)
+3. Select the corresponding document from the table above by peripheral
+4. Application-layer usage: see [board_devices](../bsp/board_devices.md) and `src/app/app.c`

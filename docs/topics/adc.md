@@ -342,3 +342,220 @@ T_conv ≈ (采样周期 + 12.5) / ADCCLK
 4. `src/app/app.c` 的 `app_analog_sensors_oled_task()`：看应用层如何一次读两路  
 
 若只加第三路模拟传感器，需要扩展 `SQR` 序列长度、`DMA CNDTR` 和缓冲区槽位，而不是再复制一套单通道驱动。
+
+---
+
+# English
+
+# STM32F103 ADC Overview (Single-Channel vs Dual SCAN+DMA)
+
+This document explains both ADC1 usage patterns in this project: **single-channel polling** vs **dual-channel SCAN+DMA** (`adc1_dual_scan_dma`), register setup, code locations, and pitfalls.
+
+---
+
+## 1. ADC Mental Model
+
+Analog sensors output **0–VDDA voltage**. ADC quantizes to **12-bit unsigned** `0–4095`:
+
+```
+Vout = raw / 4095 * VDDA
+```
+
+This board (default):
+
+| Pin | ADC channel | Module |
+|-----|-------------|--------|
+| PA1 | ADC1_IN1 | Photoresistor |
+| PA2 | ADC1_IN2 | Thermistor |
+
+Data path:
+
+```
+Sensor divider → GPIO analog → sample/hold → 12-bit → DR / DMA / app math
+```
+
+**F103 ADC clock**: from `PCLK2` via `RCC_CFGR.ADCPRE` (/2 /4 /6 /8 only), **max 14 MHz**, no /1.
+
+---
+
+## 2. Two Approaches (Why SCAN+DMA)
+
+| Aspect | Single-channel poll | Dual SCAN+DMA (current) |
+|--------|---------------------|-------------------------|
+| Channels per trigger | 1 | N (here 2) |
+| `CR1.SCAN` | 0 | 1 |
+| `SQR1.L` | 0 (length 1) | 1 (length 2, L = N−1) |
+| `CR2.DMA` | 0 | 1 |
+| Results | Wait EOC → read `DR` | DMA → `uint16_t buffer[]` |
+| Two sensors | Software time-multiplex `SQR` | Hardware SQ1→SQ2 aligned |
+| CPU | Poll EOC | Poll DMA `TCIF1` (or IRQ) |
+| Code | Thin wrappers on `adc1_dual_scan_dma.c` | `adc1_dual_scan_dma.c` |
+
+---
+
+## 3. Register Quick Reference
+
+### 3.1 Clock and GPIO
+
+| Register | Role | This project |
+|----------|------|--------------|
+| `RCC_APB2ENR.ADC1EN` | ADC1 clock | `bsp_board_init()` |
+| `RCC_AHBENR.DMA1EN` | DMA1 clock | AHB mask |
+| `RCC_CFGR.ADCPRE` | `ADCCLK = PCLK2 / div` | ≤14 MHz in driver |
+| `GPIO CRL/CRH` | Pin mode | PA1/PA2 analog `CNF=00 MODE=00` |
+
+### 3.2 `ADC1_SR`
+
+| Bit | Name | Meaning |
+|-----|------|---------|
+| 1 | EOC | Regular conversion done; reading `DR` clears (series-dependent) |
+
+Single: wait EOC. SCAN+DMA: usually wait DMA TC; can clear EOC before start.
+
+### 3.3 `ADC1_CR1`
+
+| Field | Single | Dual SCAN |
+|-------|--------|-----------|
+| SCAN | 0 | **1** |
+| L in SQR1 | 0 | **1** (2 conversions) |
+
+### 3.4 `ADC1_CR2`
+
+| Bit | Role |
+|-----|------|
+| ADON | Power on |
+| CAL / RSTCAL | Calibration |
+| DMA | DMA request per regular conversion |
+| EXTSEL + EXTTRIG | Trigger; **SWSTART needs EXTSEL=111 + EXTTRIG=1 on F103** |
+| SWSTART | Start conversion/scan |
+
+> **Pitfall**: `SWSTART` alone without trigger config may never start.
+
+### 3.5 `ADC1_SMPR2`
+
+3 bits per channel; longer sample for high-impedance dividers. Project uses max `111` (239.5 cycles) for IN1/IN2.
+
+### 3.6 `ADC1_SQR1` / `SQR3`
+
+- `SQR1.L`: sequence length − 1
+- `SQR3`: SQ1=ch1, SQ2=ch2 → buffer order matches
+
+### 3.7 `ADC1_DR` + DMA1 Ch1
+
+| Register | Role |
+|----------|------|
+| `DMA1_CPAR1` | `&ADC1_DR` |
+| `DMA1_CMAR1` | buffer |
+| `DMA1_CNDTR1` | count (= channel count) |
+| `DMA1_CCR1` | EN, MINC, 16-bit PSIZE/MSIZE |
+| `DMA1_ISR.TCIF1` / `IFCR.CTCIF1` | transfer complete |
+
+Flow: setup DMA → EN → SWSTART → wait TCIF1 → disable DMA.
+
+---
+
+## 4. Single-Channel Polling (Teaching)
+
+Steps:
+
+1. Enable ADC1, GPIOA clocks
+2. ADCPRE ≤ 14 MHz
+3. Analog GPIO
+4. `CR1=0` (no scan)
+5. `CR2`: EXTSEL+EXTTRIG, no DMA
+6. SMPR for channel
+7. `SQR1.L=0`, `SQR3.SQ1=channel`
+8. Calibrate: ADON → RSTCAL → CAL
+9. Clear EOC → SWSTART → wait EOC → read `DR & 0xFFF`
+
+Multiple channels = change `SQR3` each time (software multiplex), not hardware SCAN.
+
+---
+
+## 5. Dual SCAN+DMA in This Project
+
+### 5.1 Files
+
+| File | Role |
+|------|------|
+| `adc1_dual_scan_dma.c` | HW + sampling |
+| `adc1_dual_scan_dma.h` | `adc1_dual_read_pair_*` |
+| `photoresistor.c` / `thermistor.c` | Slot + conversion |
+| `board_devices.c` | `bsp_analog_sensors_read_pair_average()` |
+| `app.c` | OLED lines 4/6 |
+
+### 5.2 Init
+
+RCC, analog pins, SCAN+DMA+trigger, SQR+SMPR, calibration.
+
+### 5.3 One sample
+
+`dma_setup(2)` → DMA EN → SWSTART → TCIF1 → DMA off.
+
+### 5.4 Averaging
+
+`adc1_dual_read_pair_average_blocking()` repeats scan `scan_count` times.
+
+Prefer **one call for both channels**:
+
+```c
+bsp_analog_sensors_read_pair_average(&photo, &therm, 4);
+thermistor_read_temperature_from_raw_blocking(therm, &temp_x10);
+```
+
+---
+
+## 6. Calibration and Conversion Time
+
+Power-on: `ADON` → `RSTCAL` → `CAL` (required).
+
+$$T_{conv} \approx \frac{sample\_cycles + 12.5}{ADCCLK}$$
+
+Dual SCAN one trigger ≈ sum of two conversions + small DMA overhead.
+
+---
+
+## 7. Pitfalls
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Timeout after SWSTART | Missing EXTSEL+EXTTRIG | §3.4 |
+| Always 0 | Digital GPIO mode | Analog input |
+| Noisy | Short SMP / no average | Long SMP + average |
+| Two drivers fight ADC | Duplicate SQR setup | One SCAN driver |
+| DMA never done | `CNDTR` ≠ channels; DMA off in CR2 | Match count; `DMA=1` |
+| Link overlap | Missing `.ARM.exidx*` in LD | Fix linker script |
+| Wrong temperature | Wrong `VDDA` | `thermistor_config.vdda_mv` |
+
+---
+
+## 8. OLED Format Note
+
+`bsp_display_write_text_atf()` uses **subset printf** (`ssd1306_vformat`): `%u %d %c %s %x %X %%` only—no width/precision.
+
+---
+
+## 9. Macro Cross-Reference
+
+| Bit/field | Macro in `stm32f103_regs.h` |
+|-----------|----------------------------|
+| SCAN | `ADC_CR1_SCAN_BIT` |
+| L=1 | `ADC_CR1_L_2_CONV` |
+| DMA | `ADC_CR2_DMA_BIT` |
+| SWSTART | `ADC_CR2_SWSTART_BIT` |
+| EXTSEL SW | `ADC_CR2_EXTSEL_SWSTART` |
+| EOC | `ADC_SR_EOC_BIT` |
+| SQ1/SQ2 | `ADC_SQR3_SQ1/2` |
+| SMP IN1/2 | `ADC_SMPR2_SMP1/2_MAX` |
+| DMA TC | `DMA_ISR_TCIF1_BIT` / `DMA_IFCR_CTCIF1_BIT` |
+
+---
+
+## 10. Reading Order
+
+1. §2–3: single vs SCAN+DMA
+2. `adc1_dual_scan_dma.c`: register order
+3. `thermistor.c`: raw → R → temperature table
+4. `app_analog_sensors_oled_task()`: app usage
+
+Adding a third analog channel: extend `SQR`, `CNDTR`, buffer slots—not another single-channel driver copy.

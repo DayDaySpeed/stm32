@@ -63,3 +63,73 @@ sensor_led_set_ntc_permille(800U);
 - 忘记 MOE → 寄存器有波形但引脚无输出
 - duty > 1000 → 参数错误
 - LED 极性接反 → 占空越高越暗（硬件问题）
+
+---
+
+# English
+
+# Sensor Indicator LED Driver (`sensor_led`)
+
+## Purpose
+
+Drives two indicator LEDs with **TIM1 dual-channel PWM**:
+
+- **PA8 / TIM1_CH1**: brighter ambient light → brighter LED
+- **PA11 / TIM1_CH4**: higher NTC temperature → brighter LED
+
+## Hardware
+
+Pin → current-limit resistor (330Ω~1kΩ) → LED+ → LED- → GND
+
+TIM1 is an **advanced timer**; `BDTR.MOE=1` is required for pin output.
+
+## Configuration Structure
+
+```c
+typedef struct {
+  uint32_t pwm_hz;  /* default 1000, see BOARD_SENSOR_LED_PWM_HZ */
+} sensor_led_config_t;
+```
+
+## API Reference
+
+| Function | Description |
+|------|------|
+| `sensor_led_init_with_config(config)` | GPIO + TIM1 dual PWM |
+| `sensor_led_init()` | 1 kHz default |
+| `sensor_led_set_ldr_permille(duty)` | CH1 duty 0~1000 |
+| `sensor_led_set_ntc_permille(duty)` | CH4 duty 0~1000 |
+
+## Implementation Notes
+
+### Clock Source
+
+TIM1 is on APB2; uses `bsp_clock_get_apb2_timer_hz()` (includes F1 timer ×2 rule). Previously using `pclk2` directly was correct at HSI 8 MHz full /1; unified helper is safer when clock scheme changes.
+
+### Dual Channel, Same ARR
+
+LDR and NTC share PSC/ARR for consistent frequency; runtime updates only CCR1/CCR4, independent of each other.
+
+### BSP Integration
+
+`bsp_sensor_led_update_from_sensors()`:
+
+1. `read_pair_average` for ldr/ntc raw
+2. ldr → linear map to 0~1000 permille
+3. ntc raw → `thermistor_read_temperature_from_raw` → map by `BOARD_NTC_LED_FULL_TEMP_X10`
+
+**Why mapping is in BSP, not driver**: driver handles PWM output only; sensor semantics belong to board-level policy.
+
+## Usage Example
+
+```c
+sensor_led_init();
+sensor_led_set_ldr_permille(500U);
+sensor_led_set_ntc_permille(800U);
+```
+
+## Common Pitfalls
+
+- Forgetting MOE → registers show waveform but no pin output
+- duty > 1000 → parameter error
+- LED polarity reversed → higher duty appears dimmer (hardware issue)

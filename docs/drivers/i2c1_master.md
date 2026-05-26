@@ -82,3 +82,92 @@ SSD1306 默认在 `ssd1306_default_init` 内部完成 I2C init。
 - 无上拉 → 波形不起振
 - 长 payload 阻塞主循环 → OLED 全刷时配合任务节流
 - 多主机：本 HAL 仅主机写，不支持仲裁读
+
+---
+
+# English
+
+# I2C1 Master HAL (`i2c1_master`)
+
+> **Layering**: This module belongs to the [HAL layer](../hal/README.md), not `src/drivers/`. Documentation is placed here for proximity to SSD1306.
+
+## Purpose
+
+Provides **I2C1 master** blocking write-frame transactions for slave devices such as SSD1306. Located in `src/hal/`, between BSP clock/pin setup and device-specific drivers.
+
+## Hardware
+
+| Signal | Pin | Description |
+|------|------|------|
+| SCL | PB8 | Alternate-function open-drain (AFIO remap for I2C1) |
+| SDA | PB9 | Alternate-function open-drain |
+
+External pull-up resistors required (typically 4.7kΩ~10kΩ to 3.3V).
+
+## Configuration Structure
+
+```c
+typedef struct {
+  uint32_t pclk1_hz;      /* bsp_clock_get_pclk1_hz(), ≥ 2MHz */
+  uint32_t bus_hz;        /* target SCL, e.g. 100000 */
+  uint32_t timeout_iter;  /* poll timeout loop count, 0=default 3000 */
+} i2c1_master_config_t;
+```
+
+## API Reference
+
+| Function | Description |
+|------|------|
+| `i2c1_master_init(cfg)` | GPIO remap + timing registers + PE |
+| `i2c1_master_bus_recover()` | 9 pulses + STOP to release stuck bus |
+| `i2c1_master_write_frame(addr7, ctrl, payload, len)` | START→address(W)→ctrl→data→STOP |
+
+### `write_frame` Return Values
+
+| Status | Meaning |
+|------|------|
+| `STM_OK` | Full frame success |
+| `STM_ERR_BUSY` | Bus remained BUSY before START |
+| `STM_ERR_NACK` | No slave acknowledge |
+| `STM_ERR_TIMEOUT` | Event flag wait timeout |
+
+Error paths always send STOP to avoid SDA stuck low.
+
+## Implementation Notes
+
+### Why HAL Layer, Not drivers
+
+I2C is a **bus capability** reusable by SSD1306, MPU6050, etc. SSD1306 driver only cares about `0x00/0x40` control bytes, injected via function pointer as `bus_write`.
+
+### Standard-Mode Timing
+
+`CR2.FREQ`, `CCR`, and `TRISE` derived from `pclk1_hz` and `bus_hz`. Current implementation targets **100 kHz standard mode**; 400 kHz requires separate Fast mode configuration.
+
+### Bus Recovery
+
+OLED reset or hot-plug may lock SDA low. `bus_recover` switches to GPIO mode, clocks 9 pulses on SCL, sends STOP, then `ssd1306_init` can retry.
+
+## Usage Example
+
+```c
+const i2c1_master_config_t cfg = {
+  .pclk1_hz = bsp_clock_get_pclk1_hz(),
+  .bus_hz = 100000UL,
+  .timeout_iter = 0U,
+};
+i2c1_master_init(&cfg);
+
+uint8_t cmd[] = {0xAF};  /* display on */
+i2c1_master_write_frame(0x3CU, 0x00U, cmd, 1U);
+```
+
+SSD1306 default init performs I2C init internally in `ssd1306_default_init`.
+
+Protocol and SSD1306 frame format: [topics/I2C.md](../topics/I2C.md). HAL overview: [hal/README.md](../hal/README.md).
+
+## Common Pitfalls
+
+- Wrong `pclk1_hz` → baud rate off, NACK or intermittent failure
+- No pull-ups → waveform does not rise
+- Long payload blocks main loop → throttle tasks during full OLED refresh
+- Multi-master: this HAL is master-write only, no arbitration or read support

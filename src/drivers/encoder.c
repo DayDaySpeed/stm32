@@ -17,6 +17,7 @@
 #include "drivers/encoder.h"
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/stm32f103_regs.h"
 
 #include <stddef.h>
@@ -33,11 +34,16 @@ stm_status_t tim3_encoder_init_with_config(const tim3_encoder_config_t *config) 
     return STM_ERR_INVALID_ARG;
   }
 
-  /* ---------- 1) GPIO PA6/PA7 配成输入上拉 ---------- */
-  GPIOA_CRL = (GPIOA_CRL & ~(BOARD_GPIO_PA6_CRL_MASK | BOARD_GPIO_PA7_CRL_MASK)) |
-              BOARD_GPIO_PA6_INPUT_PULL | BOARD_GPIO_PA7_INPUT_PULL;
-  /* 输入模式下，ODR 的对应 bit 决定上拉(1) 还是下拉(0)；编码器接 VCC 用上拉。 */
-  GPIOA_ODR |= BOARD_GPIO_PA6_PA7_ODR_PULLUP;
+  if (BOARD_AFIO_ENCODER_REMAP != 0U) {
+    board_gpio_afio_apply(AFIO_MAPR_TIM3_REMAP_MASK, BOARD_AFIO_ENCODER_REMAP);
+  }
+#if (BOARD_ENCODER_PIN_MUX == BOARD_ENCODER_MUX_PC6_PC7)
+  board_gpio_enable_port_c_clock();
+#endif
+
+  board_gpio_apply_crl(BOARD_GPIO_ENCODER_CR_REG, BOARD_GPIO_ENCODER_CR_MASK,
+                       BOARD_GPIO_ENCODER_MODE_IN_PULL);
+  board_gpio_odr_pullup(BOARD_GPIO_ENCODER_ODR_REG, BOARD_GPIO_ENCODER_ODR_PULLUP);
 
   /* ---------- 2) 停 CNT，确保配置过程中不会跑飞 ---------- */
   TIM3_CR1 &= ~TIM_CR1_CEN_BIT;

@@ -646,3 +646,307 @@ static void usart_init_polling(USART_TypeDef *u, uint16_t brr)
 5. 启动 DMA 通道
 
 常见坑：只开 DMA 通道但没开 `DMAT/DMAR`，或顺序反了导致首包丢失。
+
+---
+
+# English
+
+# USART From Basics to Circuit Implementation (STM32 View)
+
+This document organizes the full USART chain: **TXE/TC/DR**, send/receive timing (why 1.5 bit), **BRR/OVER8**, and how **Mantissa + Fraction** is implemented in hardware.
+
+---
+
+## 1. Global Picture: USART Transmit Path
+
+Transmit (logic):
+
+`CPU → DR → transmit shift register → TX pin`
+
+Receive:
+
+`RX pin → receive shift register → DR → CPU`
+
+Clock:
+
+`fCK → baud generator (BRR) → sample ticks → state machine / shift register`
+
+---
+
+## 2. Common Abbreviations
+
+### 2.1 DR (Data Register)
+
+CPU write (TX) / read (RX) data holding register.
+
+### 2.2 TXE (Transmit Data Register Empty)
+
+- `TXE=1`: `DR` empty, can write next byte
+- `TXE=0`: `DR` busy
+
+Question: **Can I queue the next byte?**
+
+### 2.3 TC (Transmission Complete)
+
+- `TC=1`: last byte including stop bit finished on the wire
+- `TC=0`: bits still shifting out
+
+Question: **Is the frame fully done?**
+
+### 2.4 TXE vs TC
+
+- `TXE=1` only means `DR` is empty (may still be shifting)
+- `TC=1` means `DR` empty + shift register empty + line idle after stop
+
+After the last byte, wait **`TC`**, not only `TXE`.
+
+---
+
+## 3. Polling Transmit (`"OK\n"`)
+
+```c
+while (!(USARTx->SR & USART_SR_TXE)) { }
+USARTx->DR = 'O';
+// ... 'K', '\n' ...
+while (!(USARTx->SR & USART_SR_TC)) { }
+```
+
+1. Wait `TXE=1`, write `DR`
+2. `TXE` clears, hardware moves byte to shifter, `TXE` sets again
+3. After last byte, wait `TC=1`
+
+---
+
+## 4. Shift Register
+
+Parallel load 8 bits; each baud tick shifts LSB to TX.
+
+8N1 on wire:
+
+`idle(1) → start(0) → data bits 0..7 LSB first → stop(1)`
+
+- `DR`: CPU buffer
+- Shift register: bit-by-bit transmitter
+
+---
+
+## 5. Why LSB First
+
+Convention + simple hardware/software (`data >>= 1`), not a physics law.
+
+---
+
+## 6. Baud Rate and BRR
+
+With `OVER8=0` (16× oversampling):
+
+`USARTDIV = fCK / (16 * Baud)`
+
+16 ticks per bit time; shifter steps on that rhythm.
+
+---
+
+## 7. Why First Sample at 1.5 Bit (Receive)
+
+- 1 **bit** = UART symbol time
+- 1 **tick** = oversampling sub-step (`OVER8=0` → 16 ticks/bit)
+
+After start edge, sample at **1.5 bit** = center of bit0 (best margin).
+
+16×: `1.5 bit = 24 ticks`, then every 16 ticks for next bits.
+
+---
+
+## 8. Baud Error
+
+No separate clock wire—each side estimates bit time. Mismatch drifts sample points → garbage / `FE`. Keep total error roughly within **±2%** in practice.
+
+---
+
+## 9. Oversampling vs Line Speed
+
+More samples per bit improve **decision robustness**, not wire bitrate.
+
+---
+
+## 10. Key Registers: SR / DR / BRR / CR1
+
+### 10.1 `CR1`
+
+`UE`, `TE/RE`, `M`, `PCE/PS`, `TXEIE/RXNEIE`, `OVER8`, etc.
+
+### 10.2 `BRR`
+
+Sets `USARTDIV` fractional divider.
+
+### 10.3 `SR`
+
+`TXE`, `TC`, `RXNE`, `ORE`, `FE`, …
+
+### 10.4 `DR`
+
+Write starts TX; read gets RX byte.
+
+### 10.5 `RXNE`
+
+- `RXNE=1`: byte ready in `DR`
+- Poll or `RXNEIE` interrupt or DMA
+- Unread data → possible `ORE`
+
+### 10.6 Why CR1/CR2/CR3
+
+Split control: core (`CR1`), frame/stop (`CR2`), DMA/flow (`CR3`).
+
+### 10.7 Hardware state machine
+
+Peripheral auto-handles start detect, tick timing, bit sampling, stop check, sets `RXNE`/`FE`/`ORE`. CPU configures and moves bytes.
+
+### 10.8 Receive state diagram (summary)
+
+`IDLE` → start edge → `START_CONFIRM` (0.5 bit) → `ALIGN_TO_BIT0` (+1.0 bit = 1.5 total) → `DATA_SHIFT` (8 bits) → optional parity → `STOP_CHECK` → write `DR`, `RXNE=1` or error flags → back to `IDLE`.
+
+Maps to `CR1/2/3`, `BRR`, `SR`, `DR`.
+
+---
+
+## 11. Why BRR Uses Mantissa + Fraction
+
+Target division is rarely integer → **fixed-point** with 1/16 fractional steps (`OVER8=0` case).
+
+---
+
+## 12. Circuit Model: Integer + Fraction Accumulator
+
+1. Down-counter reload from `Mantissa (+1 when carry)`
+2. 4-bit fractional accumulator `A`
+3. Each tick: `A += Fraction`; if `A ≥ 16`, carry=1, `A -= 16`
+4. Long-term average ≈ `Mantissa + Fraction/16`
+
+---
+
+## 13. Example: 72 MHz, 9600 Baud
+
+`USARTDIV = 72e6/(16*9600) = 468.75` → Mantissa 468, Fraction 12 → exact 9600.
+
+Many pairs quantize with small error.
+
+---
+
+## 14. FIFO vs Single DR
+
+**FIFO** (First In, First Out): queue bytes in hardware—less CPU polling, higher throughput. F103 USART here is DR-based unless external FIFO IP.
+
+---
+
+## 15. Minimal Polling Template
+
+```c
+static void usart_send_byte(USART_TypeDef *u, uint8_t b) {
+    while (!(u->SR & USART_SR_TXE)) { }
+    u->DR = b;
+}
+void usart_send_buf(...) {
+    for (...) usart_send_byte(u, buf[i]);
+    while (!(u->SR & USART_SR_TC)) { }
+}
+```
+
+---
+
+## 16. One-Page Cheat Sheet
+
+- `DR`: data port
+- `TXE`: can write `DR`
+- `TC`: frame fully sent
+- Shifter: bit engine
+- `BRR`: baud divider (fixed-point)
+- `OVER8`: 8 vs 16× sample
+- 1.5 bit: align to bit0 center
+- Error: clock mismatch → drift
+- Oversampling: noise immunity
+
+---
+
+## 17. One Sentence
+
+`CR1` sets rules, `BRR` sets timing, `SR` reports status, `DR` moves data; shifter + state machine send/sample bits in hardware.
+
+---
+
+## 18. BRR Table (8 MHz Project Assumption)
+
+- `SYSCLK_HZ = 8000000` (`clock.h`)
+- Default: `PCLK1 = PCLK2 = 8 MHz`
+- `OVER8=0`: `USARTDIV = PCLK/(16*Baud)`, `BRR = (Mantissa<<4)|Fraction`
+
+USART1 on APB2; USART2/3 on APB1—here both 8 MHz.
+
+### 18.1 Common baud rates (PCLK=8 MHz)
+
+| Target baud | USARTDIV | Mantissa | Fraction | BRR (hex) | Actual (~) | Error |
+|-------------|----------|----------|----------|-----------|------------|-------|
+| 9600 | 52.0833 | 52 | 1 | `0x341` | 9606.15 | +0.064% |
+| 19200 | 26.0417 | 26 | 1 | `0x1A1` | 19184.65 | -0.080% |
+| 38400 | 13.0208 | 13 | 0 | `0x0D0` | 38461.54 | +0.160% |
+| 57600 | 8.6806 | 8 | 11 | `0x08B` | 57553.96 | -0.080% |
+| 115200 | 4.3403 | 4 | 5 | `0x045` | 115942.03 | +0.644% |
+| 230400 | 2.1701 | 2 | 3 | `0x023` | 228571.43 | -0.794% |
+
+### 18.2 Tips
+
+- At 72 MHz system clock, recompute table.
+- Check **combined** error with peer device.
+- Garbling: crystal/RC accuracy, matching baud, wait `TC` after last byte.
+
+### 18.3 `usart_brr_calc` template
+
+```c
+static uint16_t usart_brr_calc(uint32_t pclk_hz, uint32_t baud) {
+    uint32_t div_times_16 = (pclk_hz + (baud / 2U)) / baud;
+    uint32_t mantissa = div_times_16 / 16U;
+    uint32_t fraction = div_times_16 % 16U;
+    return (uint16_t)((mantissa << 4U) | fraction);
+}
+```
+
+---
+
+## 19. Register Map by Init Order
+
+### 19.1 Order
+
+1. RCC clocks
+2. GPIO AF TX, input RX
+3. `UE=0`
+4. `CR1/CR2/CR3` (frame, IRQ, DMA)
+5. `BRR`
+6. Clear stale flags (read SR/DR per manual)
+7. `TE/RE=1`
+8. `UE=1` last
+9. NVIC if interrupts
+
+### 19.2 Step table
+
+| Step | Registers | Action |
+|------|-----------|--------|
+| 1 | RCC APB2/1 ENR | Enable USART/GPIO |
+| 2 | GPIO CRL/CRH | TX AF_PP, RX in float/pull |
+| 3 | CR1 | `UE=0` |
+| 4 | CR1 | M, parity, IRQ bits |
+| 5 | CR2 | STOP bits |
+| 6 | CR3 | DMA, flow control |
+| 7 | BRR | Baud |
+| 8 | SR/DR | Clear leftovers |
+| 9 | CR1 | TE, RE |
+| 10 | CR1 | UE=1 |
+| 11 | NVIC_ISER | IRQ enable |
+
+### 19.3 Why `UE` last
+
+Avoid RX noise during config, partial settings, spurious IRQs.
+
+### 19.4–19.6 Minimal / IRQ / DMA init
+
+Same as Chinese sections: polling template; enable `RXNEIE` then `UE` then NVIC; DMA needs `DMAT/DMAR` and channel setup before `UE`.
+
+**DMA pitfall**: enable `DMAT/DMAR` on USART, not only DMA channel—or first packet lost.

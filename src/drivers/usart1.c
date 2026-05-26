@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/clock.h"
 #include "common/ring_buffer.h"
 
@@ -131,11 +132,10 @@ stm_status_t usart1_init_with_config(const usart1_config_t *config) {
   (void)ring_buffer_init(&g_usart1_rx_rb, g_usart1_rx_storage,
                          USART1_RX_BUF_SIZE);
 
-  /* PA9(TX)/PA10(RX) 先清配置位，再写入目标模式。 */
-  BOARD_USART1_GPIO_CRH_REG &=
-      ~(BOARD_GPIO_PA9_CRH_MASK | BOARD_GPIO_PA10_CRH_MASK);
-  BOARD_USART1_GPIO_CRH_REG |=
-      (BOARD_GPIO_PA9_AF_PP_50MHZ | BOARD_GPIO_PA10_INPUT_FLOATING);
+  board_gpio_apply_crh(BOARD_GPIO_USART1_CR_REG,
+                       BOARD_GPIO_USART1_TX_CR_MASK |
+                           BOARD_GPIO_USART1_RX_CR_MASK,
+                       BOARD_GPIO_USART1_TX_MODE | BOARD_GPIO_USART1_RX_MODE);
 
   USART1_BRR = (uint32_t)brr;
 

@@ -330,3 +330,285 @@ I2C 真正要掌握的不是“背寄存器名”，而是这条主线：
 **电气（开漏上拉） -> 协议（START/ADDR/ACK） -> 外设状态机（SB/ADDR/TXE/BTF） -> 设备协议（SSD1306 控制字节） -> 错误收敛（AF/超时/恢复）**
 
 这条链通了，换任意 I2C 传感器/EEPROM/屏，方法都一样。
+
+---
+
+# English
+
+# I2C Overview (STM32F103 + SSD1306 Practice)
+
+---
+
+## 1. What I2C Is
+
+I2C (Inter-Integrated Circuit) is a two-wire synchronous serial bus:
+
+- `SCL`: clock (usually master-driven)
+- `SDA`: data (bidirectional)
+
+Key properties:
+
+- Multiple devices on one bus (shared SCL/SDA)
+- Address distinguishes devices
+- Open-drain wiring with pull-ups
+- Half-duplex bit transfer; 8 data bits + 1 ACK/NACK bit per byte
+
+---
+
+## 2. Electrical and Hardware Basics
+
+### 2.1 Open-drain + pull-up
+
+I2C pins must be open-drain (OD):
+
+- Drive 0: actively pull low
+- Drive 1: release line; pull-up raises SDA/SCL
+
+Why not push-pull:
+
+- Shared bus—push-pull high vs low causes hard contention
+
+### 2.2 Pull-up resistors
+
+Typical 3.3 V systems: 2.2k–10k (often 4.7k).
+
+Longer wires / more capacitance → slower edges → harder to run high speed.
+
+### 2.3 Speed modes
+
+- Standard-mode: 100 kHz (most stable; good for learning)
+- Fast-mode: 400 kHz (stricter wiring/pull-ups)
+
+---
+
+## 3. I2C Protocol Frame
+
+Typical master **write** transaction:
+
+1. `START`
+2. `7-bit address + W(0)` (or 10-bit address sequence)
+3. Slave `ACK`
+4. Data byte(s) + slave `ACK` each
+5. `STOP`
+
+**Read** is similar with `R(1)`; host sends `NACK` on last byte.
+
+### 3.1 START/STOP
+
+- START: `SCL` high, `SDA` high→low
+- STOP: `SCL` high, `SDA` low→high
+
+### 3.2 ACK/NACK
+
+After 8 bits, 9th clock:
+
+- `ACK`: receiver pulls SDA low
+- `NACK`: receiver leaves SDA high
+
+NACK causes: wrong address, busy slave, bad timing, wiring/pull-up issues.
+
+---
+
+## 4. 7-Bit vs 8-Bit Address
+
+Unified model:
+
+- **Device address is 7 bits** (SSD1306 often `0x3C`)
+- On wire you send **8-bit address byte**: `addr7 << 1 | R/W`
+
+Example `addr7 = 0x3C`:
+
+- Write byte: `0x78`
+- Read byte: `0x79`
+
+Silkscreen `0x78/0x7A` is often **8-bit write address**, not 7-bit.
+
+---
+
+## 5. STM32F103 I2C (I2C1 in This Project)
+
+### 5.1 Clock and pins
+
+- Clock: `RCC_APB1ENR` enable `I2C1`
+- Default: `PB6(SCL)/PB7(SDA)`
+- Remapped: `PB8(SCL)/PB9(SDA)` (**this project**)
+
+Remap requires:
+
+- `AFIO_MAPR.I2C1_REMAP = 1`
+
+GPIO: alternate function open-drain (AF_OD).
+
+### 5.2 Key registers
+
+- `I2C_CR1`: enable, START, STOP
+- `I2C_CR2`: `FREQ` (PCLK1 in MHz)
+- `I2C_CCR`: SCL timing
+- `I2C_TRISE`: max rise time
+- `I2C_SR1/SR2`: `SB/ADDR/TXE/BTF/AF/BUSY`, etc.
+- `I2C_DR`: data
+
+---
+
+## 6. F103 Timing at 100 kHz (Example)
+
+Assume:
+
+- `PCLK1 = 8 MHz`
+- Target `SCL = 100 kHz`
+
+Typical:
+
+- `CR2.FREQ = 8` (MHz)
+- `CCR = PCLK1 / (2 * SCL) = 40`
+- `TRISE = FREQ_MHz + 1 = 9` (common Sm-mode shortcut)
+
+> `TRISE = FREQ+1` is a practical rule from the 1000 ns rise-time limit in the manual.
+
+---
+
+## 7. Polling Transmit State Machine (This Project)
+
+Write transaction (EV5/EV6/EV8 path):
+
+1. Wait `BUSY=0`
+2. Set `START`
+3. Wait `SR1.SB=1` (EV5)
+4. Write address byte (`addr7 << 1 | write`)
+5. Wait `SR1.ADDR=1` (EV6)
+6. Read `SR1` then `SR2` (clear `ADDR`)
+7. Wait `TXE=1`, write control byte
+8. Each payload: wait `TXE` → write `DR`
+9. Wait `BTF=1` (last byte complete)
+10. Set `STOP`
+
+Errors:
+
+- `AF=1` (NACK): clear flag, `STOP`, fail
+- Timeout: `STOP`, fail
+
+---
+
+## 8. Why `(void)I2C1_SR1; (void)I2C1_SR2;`
+
+Manual sequence to clear `ADDR` event—advances state machine.
+
+- Not clearing whole registers
+- `(void)` means intentional read; `volatile` makes read real
+
+---
+
+## 9. SSD1306 Data on I2C
+
+7-bit address usually `0x3C` (some boards `0x3D`).
+
+Control byte after address:
+
+- `0x00`: command stream
+- `0x40`: GDDRAM data stream
+
+Frames:
+
+- Command: `START → addr+w → 0x00 → cmd... → STOP`
+- GRAM: `START → addr+w → 0x40 → data... → STOP`
+
+---
+
+## 10. SSD1306 Frame Buffer (128×64)
+
+- 128×64 pixels
+- 8 pages × 128 bytes = 1024 bytes (`g_fb` in project)
+
+---
+
+## 11. Partial vs Full Refresh
+
+Full refresh: 1024 bytes, simple, consistent, long bus time.
+
+Partial: set window (`0x21` columns, `0x22` pages), send changed region only.
+
+This project:
+
+- Normal char: partial 6 columns
+- After scroll: full refresh (large memory move)
+
+---
+
+## 12. Polling vs Interrupt vs DMA
+
+| Mode | Pros | Cons |
+|------|------|------|
+| Polling | Easiest debug | CPU busy-waits |
+| Interrupt | Better CPU use | Complex state machine |
+| DMA | Best for bulk | Highest bring-up cost |
+
+Path: polling first → interrupt → DMA.
+
+---
+
+## 13. Common Faults
+
+1. **No ACK** — wrong address, swapped SCL/SDA, no pull-up, slave off
+2. **BUSY stuck** — SDA held low; bus recovery / soft reset
+3. **Garbled data** — clock too fast, long wires, state machine bugs
+4. **Blank after init** — missing charge pump, wrong contrast/scan, no flush
+
+---
+
+## 14. This Repo Mapping
+
+| File | Role |
+|------|------|
+| `stm32f103_regs.h` | I2C register bits |
+| `clock.h` | `SYSCLK_HZ` / `BSP_PCLK1_HZ` |
+| `board_init.c` | RCC I2C1 |
+| `ssd1306_oled.c` | I2C1 + OLED refresh |
+
+- Hardware I2C1 master, not bit-bang
+- AFIO remap to `PB8/PB9`
+- Polling + timeout + AF cleanup
+
+### 14.1 Refactored modules
+
+- `hal/i2c1_master.c`: `i2c1_master_init()`, `i2c1_master_write_frame()`, EV5/6/8, timeout, NACK
+- `ssd1306_oled.c`: `ssd1306_t`, `ssd1306_bus_write_fn`, `init/clear/putc/flush/write_text`
+
+Benefit: bus logic decoupled from SSD1306; swap I2C2 or bit-bang via `bus_write`.
+
+---
+
+## 15. Interview / Practice Q&A
+
+**Q1: Why open-drain?**  
+A: Shared bus; high level from pull-up, no push-pull fight.
+
+**Q2: Why `CR2.FREQ`?**  
+A: Tells peripheral PCLK1 MHz for internal timing.
+
+**Q3: Clear ADDR — read SR1 then SR2?**  
+A: Required hardware sequence; missing step stalls FSM.
+
+**Q4: 100k vs 400k?**  
+A: Start 100k; raise after stable waveforms.
+
+**Q5: When full refresh?**  
+A: Global framebuffer moves (e.g. scroll).
+
+---
+
+## 16. Next Steps
+
+1. Async interrupt TX + polling fallback
+2. Error counters (AF/timeout) on UART
+3. Bus recovery (SCL pulses when SDA stuck)
+4. Configurable 100k/400k macro
+
+---
+
+## 17. One-Page Summary
+
+Master the chain:
+
+**Electrical (OD + pull-up) → Protocol (START/ADDR/ACK) → Peripheral FSM (SB/ADDR/TXE/BTF) → Device protocol (SSD1306 control byte) → Error handling (AF/timeout/recovery)**
+
+Same method for any I2C sensor/EEPROM/display.

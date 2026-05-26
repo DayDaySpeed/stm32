@@ -24,7 +24,7 @@
 | 2 | `bsp_console_init()` | `usart1` 115200 + 绑定 `stm_log` |
 | 3 | `bsp_console_enable_rx_interrupt()` | USART1 RXNE 中断 |
 | 4 | `bsp_display_init()` | `ssd1306_default_init()`（含 I2C） |
-| 5 | `bsp_status_led_init()` | `tim2_ch1_pwm` 1kHz，占空 0 |
+| 5 | `bsp_status_led_init()` | `breathing_led` 1kHz，占空 0 |
 | 6 | `bsp_wheel_encoder_init()` | `tim3_encoder` + `BOARD_WHEEL_ENCODER_DIRECTION` |
 | 7 | `bsp_analog_sensors_init()` | ADC 三路 + 光敏/热敏/红外薄封装 |
 | 8 | `bsp_buzzer_init()` | `buzzer` + `BOARD_BUZZER_ACTIVE_HIGH` |
@@ -61,7 +61,7 @@
 
 | API | 说明 |
 |-----|------|
-| `bsp_status_led_init()` | PA0 TIM2 PWM 1kHz |
+| `bsp_status_led_init()` | `breathing_led` 1kHz |
 | `bsp_status_led_set_duty_permille(duty)` | 0~1000，呼吸灯任务调用 |
 
 ### 编码器 `bsp_wheel_encoder_*`
@@ -120,7 +120,7 @@ BSP 层在 set/get 时应用 `BOARD_MOTOR_REVERSE_SIGN`，驱动层保持物理 
 |------------|----------|----------|
 | console | usart1 | PA9/PA10 |
 | display | ssd1306_oled + i2c1_master | PB8/PB9, 0x3C |
-| status_led | pwm (tim2_ch1) | PA0 |
+| status_led | breathing_led (TIM2_CH1) | PA0 |
 | wheel_encoder | encoder (tim3) | PA6/PA7 |
 | dc_motor | dc_motor | PB5/6/7, TIM4 |
 | ambient_light / analog | photoresistor + adc1_dual | PA1 |
@@ -165,3 +165,175 @@ if (bsp_console_read_line_try(line, sizeof(line)) == STM_OK) {
 
 - [board_config.md](./board_config.md) — 可调宏
 - [drivers/usart1.md](../drivers/usart1.md) 等底层 API 细节
+
+---
+
+# English
+
+# board_devices — Board-Level Logical Devices
+
+`bsp/board_devices.h` is the **recommended sole entry point for application-layer hardware access**. It consolidates concrete bindings such as `USART1`, `TIM2_CH1`, and `ADC1_IN1` into semantic names: `console`, `display`, `wheel_encoder`, and so on.
+
+Implementation file: `src/bsp/board_devices.c` (holds static default values for each driver's `*_config_t` internally).
+
+---
+
+## Design Goals
+
+1. **Applications do not touch pin/peripheral instance names**, simplifying board retargeting or timer channel changes.
+2. **Default parameters are centralized** in the `g_board_*_config` structures in `board_devices.c`; user-facing thresholds are in `board_config.h`.
+3. **Unified `stm_status_t`**, consistent with [Driver Interface Conventions](../DRIVER_API_GUIDE.md).
+
+---
+
+## Default Initialization: `bsp_default_devices_init()`
+
+`app_init()` calls this function to initialize all on-board peripherals in one pass. Order:
+
+| Step | Function | Underlying Driver |
+|------|----------|-------------------|
+| 1 | `bsp_dc_motor_init()` | `dc_motor` (TIM4 10 kHz, speed 0) |
+| 2 | `bsp_console_init()` | `usart1` 115200 + bind `stm_log` |
+| 3 | `bsp_console_enable_rx_interrupt()` | USART1 RXNE interrupt |
+| 4 | `bsp_display_init()` | `ssd1306_default_init()` (includes I2C) |
+| 5 | `bsp_status_led_init()` | `breathing_led` 1 kHz, duty 0 |
+| 6 | `bsp_wheel_encoder_init()` | `tim3_encoder` + `BOARD_WHEEL_ENCODER_DIRECTION` |
+| 7 | `bsp_analog_sensors_init()` | ADC three channels + light/thermistor/IR thin wrappers |
+| 8 | `bsp_buzzer_init()` | `buzzer` + `BOARD_BUZZER_ACTIVE_HIGH` |
+| 9 | `bsp_sensor_led_init()` | `sensor_led` TIM1 dual PWM |
+
+If any step fails, the corresponding `stm_status_t` is returned and `main` calls `stm_fault_halt`.
+
+**Note**: `bsp_dc_motor_gpio_safe_early()` is not inside this function; `main` must call it separately after `bsp_board_init()` and before `app_init()`.
+
+---
+
+## API Group Reference
+
+### Console `bsp_console_*`
+
+| API | Description |
+|-----|-------------|
+| `bsp_console_init()` | USART1 115200, 16× oversampling, CR/LF both accepted as line terminators |
+| `bsp_console_enable_rx_interrupt()` | Enable RX interrupt (called separately after init for stepwise debugging) |
+| `bsp_console_write_string_blocking(text)` | Blocking string transmit |
+| `bsp_console_read_line_try(out, size)` | Non-blocking line read; `STM_ERR_BUSY` when no data |
+| `bsp_console_irq_handler()` | Call from `USART1_IRQHandler` |
+
+### Display `bsp_display_*`
+
+| API | Description |
+|-----|-------------|
+| `bsp_display_init()` | SSD1306 + I2C |
+| `bsp_display_recover()` | I2C bus recovery + re-init (stuck OLED) |
+| `bsp_display_clear()` | Clear screen |
+| `bsp_display_write_text_atf(page, col, fmt, ...)` | Formatted output at fixed position |
+
+### Status LED `bsp_status_led_*`
+
+| API | Description |
+|-----|-------------|
+| `bsp_status_led_init()` | `breathing_led` 1 kHz |
+| `bsp_status_led_set_duty_permille(duty)` | 0–1000; called by breathing-LED task |
+
+### Encoder `bsp_wheel_encoder_*`
+
+| API | Description |
+|-----|-------------|
+| `bsp_wheel_encoder_init()` | TIM3 encoder mode |
+| `bsp_wheel_encoder_read_count(out)` | 16-bit signed accumulated count |
+| `bsp_wheel_encoder_read_direction(out)` | 0 = counting up, 1 = counting down |
+
+### DC Motor `bsp_dc_motor_*`
+
+| API | Description |
+|-----|-------------|
+| `bsp_dc_motor_gpio_safe_early()` | Earliest safe GPIO at power-on (see main) |
+| `bsp_dc_motor_init()` | TIM4 PWM + TB6612 direction pins |
+| `bsp_dc_motor_set_speed_signed(speed)` | -1000 to +1000; affected by `BOARD_MOTOR_REVERSE_SIGN` |
+| `bsp_dc_motor_get_speed_signed(out)` | Read cached speed (including sign inversion) |
+| `bsp_dc_motor_set_speed_permille(duty)` | Forward only 0–1000 |
+| `bsp_dc_motor_get_speed_permille(out)` | Only when speed ≥ 0 |
+| `bsp_dc_motor_stop()` | Zero speed |
+
+The BSP layer applies `BOARD_MOTOR_REVERSE_SIGN` on set/get; the driver layer keeps the physical AIN1/AIN2 truth table unchanged.
+
+### Analog Sensors `bsp_analog_sensors_*` / Ambient Light / IR / Temperature
+
+| API | Description |
+|-----|-------------|
+| `bsp_analog_sensors_init()` | ADC1 three-channel SCAN+DMA + three thin driver inits |
+| `bsp_analog_sensors_read_pair_average(photo, therm, n)` | One SCAN average for light + thermistor |
+| `bsp_analog_sensors_read_all_average(samples[3], n)` | One SCAN average for light + thermistor + IR |
+| `bsp_ambient_light_init()` / `_read_raw_average()` | Light sensor only (pair/all usually sufficient) |
+| `bsp_ir_reflect_read_raw_average(raw, n)` | IR slot only |
+| `bsp_temperature_read_celsius_x10_from_raw(raw, out)` | Compute temperature from NTC raw; **does not trigger ADC** |
+
+**Performance tip**: When all three channels are needed, use `read_all_average` to avoid double SCAN from pair + ir separately.
+
+### Buzzer / Sensor LED
+
+| API | Description |
+|-----|-------------|
+| `bsp_buzzer_init()` / `bsp_buzzer_beep_blocking(ms)` | Active buzzer |
+| `bsp_sensor_led_init()` | TIM1 dual-channel indicator LEDs |
+| `bsp_sensor_led_update_from_sensors()` | Read LDR/NTC → map PWM duty cycle |
+
+`update_from_sensors` internal strategy:
+
+- LDR raw linearly mapped 0–1000 permille
+- NTC raw → temperature → map NTC LED brightness per `BOARD_NTC_LED_FULL_TEMP_X10`
+
+---
+
+## Logical Name → Driver Mapping Table
+
+| BSP Logical Name | Driver Module | Hardware Instance |
+|------------------|---------------|-------------------|
+| console | usart1 | PA9/PA10 |
+| display | ssd1306_oled + i2c1_master | PB8/PB9, 0x3C |
+| status_led | breathing_led (TIM2_CH1) | PA0 |
+| wheel_encoder | encoder (tim3) | PA6/PA7 |
+| dc_motor | dc_motor | PB5/6/7, TIM4 |
+| ambient_light / analog | photoresistor + adc1_dual | PA1 |
+| temperature | thermistor + adc1_dual | PA2 |
+| ir_reflect | ir_reflect + adc1_dual | PA3 |
+| buzzer | buzzer | PA4 |
+| sensor_led | sensor_led | PA8/PA11, TIM1 |
+
+---
+
+## Usage Example (Application Layer)
+
+```c
+#include "bsp/board_devices.h"
+
+stm_status_t st = bsp_default_devices_init();
+if (st != STM_OK) { /* handle */ }
+
+uint16_t samples[ADC1_DUAL_SLOT_COUNT];
+bsp_analog_sensors_read_all_average(samples, 4U);
+
+bsp_status_led_set_duty_permille(500U);
+bsp_dc_motor_set_speed_signed(300);
+
+char line[64];
+if (bsp_console_read_line_try(line, sizeof(line)) == STM_OK) {
+  bsp_display_write_text_atf(0U, 0U, "%s", line);
+}
+```
+
+See `src/app/app.c` for full task scheduling.
+
+---
+
+## Why This Layering
+
+- **drivers** can be reused on other STM32 boards by changing BSP bindings only.
+- **app** expresses *what to do* (breathing LED, knob speed control), not *PA0 vs PB0*.
+- Board-level policy (motor sign inversion, IR thresholds) lives in config or BSP, not scattered across drivers.
+
+## Related Documentation
+
+- [board_config.md](./board_config.md) — tunable macros
+- [drivers/usart1.md](../drivers/usart1.md) and other low-level API details

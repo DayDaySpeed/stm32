@@ -67,3 +67,77 @@ photoresistor_read_raw_average_blocking(&raw, 4U);
 - 未 init → `STM_ERR_NOT_INITIALIZED`
 - 模块分压接法不同 → raw 与「亮度」可能反相关，需在应用层标定
 - 与 `thermistor_init` 重复 init 无害（共享 ADC 单例）
+
+---
+
+# English
+
+# Photoresistor Driver (`photoresistor`)
+
+## Purpose
+
+Reads **photoresistor divider module** ADC raw value (0~4095) or estimated voltage (mV). A **thin wrapper** over `adc1_dual_scan_dma`, using only IN1 (PA1) slot.
+
+## Hardware
+
+- Module AO → **PA1 (ADC1_IN1)**
+- Shares one SCAN+DMA with thermistor and IR
+
+## Configuration Structure
+
+```c
+typedef struct {
+  photoresistor_adc_clock_source_t clock_source;  /* fixed PCLK2 */
+  photoresistor_adc_prescaler_t adc_prescaler;    /* passed to shared ADC */
+} photoresistor_config_t;
+```
+
+## API Reference
+
+| Function | Description |
+|------|------|
+| `photoresistor_init_with_config(config)` | Init shared ADC + mark module ready |
+| `photoresistor_init()` | Default AUTO prescaler |
+| `photoresistor_read_raw_blocking(out)` | Single 12-bit raw value |
+| `photoresistor_read_raw_average_blocking(out, n)` | Mean of n samples |
+| `photoresistor_read_millivolts_blocking(out)` | Estimate mV assuming VDDA=3.3V |
+
+Legacy names: `photoresistor_read_raw`, etc. (without `_blocking` suffix).
+
+## Implementation Notes
+
+### Why a Thin Wrapper
+
+Photoresistor, thermistor, and IR **must share one ADC1 instance**. Underlying `adc1_dual` handles registers/DMA; this driver only:
+
+1. Converts `photoresistor_config_t` to `adc1_dual_config_t`;
+2. Calls `adc1_dual_read_pair_*` for slot 0;
+3. Performs linear mV conversion.
+
+### Why `read_raw` Uses `read_pair` Instead of `read_all`
+
+Historical: photoresistor + thermistor were often used as a pair. Reading photoresistor alone still triggers a **full triple SCAN** (IR slot discarded). If IR is also needed, use `adc1_dual_read_all_*` or `bsp_analog_sensors_read_all_average` directly.
+
+### Voltage Conversion
+
+```
+mV = raw * 3300 / 4095  (rounded)
+```
+
+Actual VDDA varies slightly with LDO; precise measurement requires calibration or external reference.
+
+## Usage Example
+
+```c
+photoresistor_init();
+uint16_t raw;
+photoresistor_read_raw_average_blocking(&raw, 4U);
+```
+
+Application layer should prefer `bsp_ambient_light_read_raw_average()` or `bsp_analog_sensors_read_pair_average()`.
+
+## Common Pitfalls
+
+- Not initialized → `STM_ERR_NOT_INITIALIZED`
+- Different module divider topology → raw value may be inversely related to brightness; calibrate in application layer
+- Repeated init with `thermistor_init` is harmless (shared ADC singleton)

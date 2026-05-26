@@ -13,6 +13,7 @@
 #define APP_BREATH_STEP_MS      (12U)
 /* 相位 0..PHASE_MAX-1 走一个“先亮后暗”的三角周期；约 (STEP_MS * PHASE_MAX) ms 一整次呼吸。 */
 #define APP_BREATH_PHASE_MAX    (400U)
+#define APP_BREATH_HALF_PHASE   (APP_BREATH_PHASE_MAX / 2U)
 /* OLED 调试信息刷新节流：太快会阻塞 CPU 拖慢呼吸；500ms 人眼也跟得上。 */
 #define APP_DEBUG_OLED_PERIOD_MS (500U)
 /* 连续失败达到此次数后触发 I2C+SSD1306 重新初始化（至少间隔 RECOVER_MIN_MS）。 */
@@ -31,7 +32,6 @@
 
 /* 这些静态状态由任务函数共享，但不暴露到文件外。 */
 static uint32_t s_last_step_ms;
-static uint8_t s_time_inited;
 static uint16_t s_phase;
 static uint16_t s_duty_permille;
 static uint32_t s_last_oled_ms;
@@ -50,6 +50,7 @@ static uint32_t s_ir_beep_cooldown_until_ms;
 static uint32_t s_last_sensor_led_ms;
 
 /*
+ * 蜂鸣器鸣叫逻辑
  * 本板红外：远离 ~4000，靠近 ~100 → raw 低为靠近。
  * 须先连续读到「远离」才武装；靠近须连续低才响，避免 IR=4000 时 ADC 毛刺误触发。
  */
@@ -71,28 +72,22 @@ static void app_ir_proximity_buzzer_task(uint32_t now_ms) {
 
   if (s_ir_proximity_armed == 0U) {
     if (ir_raw >= BOARD_IR_ARM_RAW_HIGH) {
-      if (s_ir_arm_streak < 255U) {
-        s_ir_arm_streak++;
+      s_ir_arm_streak++;
+      if (s_ir_arm_streak >= BOARD_IR_ARM_STREAK_COUNT) {
+        s_ir_proximity_armed = 1U;
       }
     } else {
       s_ir_arm_streak = 0U;
-    }
-    if (s_ir_arm_streak >= BOARD_IR_ARM_STREAK_COUNT) {
-      s_ir_proximity_armed = 1U;
     }
     return;
   }
 
   if (ir_raw <= BOARD_IR_NEAR_RAW_LOW) {
-    if (s_ir_near_streak < 255U) {
-      s_ir_near_streak++;
-    }
     s_ir_leave_streak = 0U;
+    s_ir_near_streak++;
   } else if (ir_raw >= BOARD_IR_LEAVE_RAW_HIGH) {
     s_ir_near_streak = 0U;
-    if (s_ir_leave_streak < 255U) {
-      s_ir_leave_streak++;
-    }
+    s_ir_leave_streak++;
     if (s_ir_leave_streak >= BOARD_IR_LEAVE_STREAK_COUNT) {
       s_hand_near = 0U;
     }
@@ -121,9 +116,9 @@ static void app_ir_proximity_buzzer_task(uint32_t now_ms) {
  * - 更新板级状态灯 PWM
  */
 static void app_breath_led_task(uint32_t now_ms) {
-  if (s_time_inited == 0U) {
-    s_time_inited = 1U;
+  if (s_last_step_ms == 0U) {
     s_last_step_ms = now_ms;
+    return;
   }
 
   if ((uint32_t)(now_ms - s_last_step_ms) < APP_BREATH_STEP_MS) {
@@ -137,9 +132,11 @@ static void app_breath_led_task(uint32_t now_ms) {
   }
 
   {
-    uint16_t tri = (s_phase <= 200U) ? s_phase
-                                     : (uint16_t)(APP_BREATH_PHASE_MAX - s_phase);
-    s_duty_permille = (uint16_t)(((uint32_t)tri * 1000U) / 200U);
+    uint16_t tri = (s_phase <= APP_BREATH_HALF_PHASE)
+                       ? s_phase
+                       : (uint16_t)(APP_BREATH_PHASE_MAX - s_phase);
+    s_duty_permille =
+        (uint16_t)(((uint32_t)tri * 1000U) / APP_BREATH_HALF_PHASE);
   }
 
   (void)bsp_status_led_set_duty_permille(s_duty_permille);
@@ -147,11 +144,7 @@ static void app_breath_led_task(uint32_t now_ms) {
 
 static void app_oled_note_success(void) { s_oled_fail_streak = 0U; }
 
-static void app_oled_note_failure(void) {
-  if (s_oled_fail_streak < 255U) {
-    s_oled_fail_streak++;
-  }
-}
+static void app_oled_note_failure(void) { s_oled_fail_streak++; }
 
 static stm_status_t app_oled_try_recover(uint32_t now_ms) {
   if (s_oled_fail_streak < APP_OLED_RECOVER_FAIL_STREAK) {
@@ -170,7 +163,7 @@ static stm_status_t app_oled_try_recover(uint32_t now_ms) {
  */
 static stm_status_t app_encoder_oled_task(void) {
   int16_t enc_now = 0;
-  stm_status_t st = STM_OK;
+  stm_status_t st;
 
   if (bsp_wheel_encoder_read_count(&enc_now) != STM_OK) {
     enc_now = 0;
@@ -370,7 +363,7 @@ stm_status_t app_init(void) {
   stm_status_t st = STM_OK;
 
   STM_ASSERT(APP_BREATH_STEP_MS > 0U, "app_cfg");
-  STM_ASSERT(APP_BREATH_PHASE_MAX > 200U, "app_cfg");
+  STM_ASSERT(APP_BREATH_HALF_PHASE > 0U, "app_cfg");
 
   systick_init_1ms();
   st = bsp_default_devices_init();

@@ -53,3 +53,63 @@
 - 每次重构后执行：
   - `cmake --build build`
   - 串口/板载 LED 最小冒烟测试
+
+---
+
+# English
+
+# Coding Style (Bare-Metal C)
+
+## Goals
+
+- Keep code readable, maintainable, and extensible.
+- When adding new modules, do not break the existing directory layering.
+
+## Directory Layers
+
+- `src/app`: Application logic (state machines, business flows, task scheduling).
+- `src/bsp`: Board-level initialization (clock gating, PCB-specific default configuration).
+- `src/drivers`: Peripheral driver layer (USART, SysTick, SSD1306, etc.).
+- `include/bsp`: Chip registers, board pin macros, RCC enable masks, `board_init` declarations.
+- `include/drivers`: Public driver interfaces (`.h`).
+- `include/app`: Public application interfaces (`.h`).
+- `cmake/stm32_sources.cmake`: Firmware `.c/.s` source manifest; maintain centrally when adding or removing modules.
+
+## Inter-Layer Dependencies
+
+- `app` should prefer logical device entry points such as `bsp/board_devices.h`, not direct bindings to specific `USART1/TIM2/ADC1` instances.
+- `drivers` implement peripheral semantics; they do not decide which instance the board uses by default.
+- `bsp` owns board-level default bindings, clock gating, and default device composition.
+- `common` provides cross-cutting infrastructure: status codes, assertions, logging, fault handling.
+
+## Naming Conventions
+
+- Functions: `module_action_target`, e.g. `usart1_send_byte`.
+- Files: lowercase with underscores, e.g. `usart1.c`.
+- Macro constants: `UPPER_SNAKE_CASE`, e.g. `USART_CR1_UE_BIT`.
+- Static private variables: `g_` prefix, e.g. `g_ms_ticks`.
+
+## Code Style
+
+- Use C11 consistently.
+- Indent with 2 spaces.
+- One function, one responsibility; keep functions short when possible.
+- Comments explain *why*, not obvious *what*.
+- Raw register access is confined to the driver layer and `bsp`; the application layer does not touch registers directly.
+- Board-level clock gating required by drivers is performed in `bsp_board_init()`; driver headers document prerequisites.
+
+## Driver Interface Conventions
+
+- Public APIs that can fail should return `stm_status_t`.
+- `*_init_with_config()` is the primary entry point; `*_init()` is only a default-parameter wrapper.
+- `*_read_*_try()` indicates non-blocking behavior; returns `STM_ERR_BUSY` when no data is available or conditions are not met.
+- `*_write_*_blocking()` / `*_read_*_blocking()` indicate busy-wait on hardware state.
+- Legacy interfaces, if retained, must be marked as compatibility wrappers in headers; new code should not use them as the preferred entry point.
+- See [`docs/DRIVER_API_GUIDE.md`](./DRIVER_API_GUIDE.md) for full conventions.
+
+## Suggested Submission Workflow
+
+- Each new module should include at least `.c + .h`.
+- After each refactor, run:
+  - `cmake --build build`
+  - Minimal smoke test via serial console / on-board LED

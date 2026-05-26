@@ -80,3 +80,90 @@ uint16_t ir  = s[ADC1_DUAL_SLOT_IR_REFLECT];
 - ADCPRE 配太大 → ADC 时钟 >14MHz，读数不稳定。
 - GPIO 未配模拟输入 → 漏电或读数漂。
 - 多次 init 不同 prescaler → 会重配时钟，需理解 `s_initialized` 分支行为。
+
+---
+
+# English
+
+# ADC1 Triple-Channel SCAN + DMA Driver (`adc1_dual_scan_dma`)
+
+## Purpose
+
+**One SWSTART** scans three analog inputs in hardware sequence; DMA1 channel 1 writes results to RAM automatically. Ensures photoresistor, thermistor, and IR **sample at the same instant**, faster and more consistent than software channel switching via SQR.
+
+> Filename retains historical `dual`; current implementation is **3 channels** (photoresistor + thermistor + IR).
+
+## Hardware Binding
+
+| Slot | Enum | Pin | Channel |
+|------|------|------|------|
+| 0 | `ADC1_DUAL_SLOT_PHOTO` | PA1 | ADC1_IN1 photoresistor |
+| 1 | `ADC1_DUAL_SLOT_THERM` | PA2 | ADC1_IN2 thermistor |
+| 2 | `ADC1_DUAL_SLOT_IR_REFLECT` | PA3 | ADC1_IN3 IR |
+
+## Configuration Structure
+
+```c
+typedef struct {
+  adc1_dual_clock_source_t clock_source;  /* fixed PCLK2 */
+  adc1_dual_prescaler_t adc_prescaler;  /* AUTO or /2 /4 /6 /8 */
+} adc1_dual_config_t;
+```
+
+ADC clock = PCLK2 / ADCPRE, **must not exceed 14 MHz** (F103 hard limit).
+
+## API Reference
+
+| Function | Description |
+|------|------|
+| `adc1_dual_init_with_config(config)` | RCC, analog GPIO, SCAN sequence, calibration |
+| `adc1_dual_init()` | Default init with AUTO prescaler |
+| `adc1_dual_is_initialized()` | Whether init completed |
+| `adc1_dual_read_all_blocking(out[3])` | Single triple-channel scan |
+| `adc1_dual_read_all_average_blocking(out[3], n)` | Arithmetic mean of n scans |
+| `adc1_dual_read_pair_blocking(out[2])` | Photoresistor + thermistor only (still scans all three) |
+| `adc1_dual_read_pair_average_blocking(out[2], n)` | Same as above + averaging |
+
+All read APIs are **blocking**: poll DMA `TCIF1`; timeout returns `STM_ERR_TIMEOUT`.
+
+## Implementation Notes
+
+### Data Path
+
+```
+PA1/2/3 analog input → ADC1 SCAN(SQ1→SQ2→SQ3) → per-channel DR complete → DMA1 Ch1 → buffer[]
+```
+
+Key registers: `CR1.SCAN=1`, `SQR1.L=2` (length 3), `CR2.DMA=1`, `CR2.EXTSEL=software trigger`.
+
+### Why DMA Is Still Blocking
+
+Bare-metal / teaching phase prioritizes **simple behavior**: CPU waits for TCIF before return; caller need not manage half-complete state. Can be upgraded to DMA interrupt + double buffering later.
+
+### Why `read_pair` Still Scans Three Channels
+
+Hardware SCAN sequence is fixed; discarding the IR slot is safer than dynamically changing SQR (avoids conflicts with concurrent reads). Application layer should prefer `read_all_*` to fetch all three at once (OLED task in this project is already optimized this way).
+
+### Calibration Sequence
+
+`ADON` → delay → `RSTCAL` → wait clear → `CAL` → wait clear. Skipping calibration causes absolute value offset.
+
+## Usage Example
+
+```c
+adc1_dual_init();
+
+uint16_t s[ADC1_DUAL_SLOT_COUNT];
+adc1_dual_read_all_average_blocking(s, 4U);
+uint16_t ldr = s[ADC1_DUAL_SLOT_PHOTO];
+uint16_t ntc = s[ADC1_DUAL_SLOT_THERM];
+uint16_t ir  = s[ADC1_DUAL_SLOT_IR_REFLECT];
+```
+
+Full ADC theory: [topics/adc.md](../topics/adc.md).
+
+## Common Pitfalls
+
+- ADCPRE too small → ADC clock >14 MHz, unstable readings.
+- GPIO not configured as analog input → leakage or drifting readings.
+- Multiple init with different prescaler → reconfigures clock; understand `s_initialized` branch behavior.

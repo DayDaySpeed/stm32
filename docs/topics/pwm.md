@@ -92,25 +92,25 @@ $$
 
 文件：
 
-- `include/drivers/pwm.h`
-- `src/drivers/pwm.c`
+- `include/drivers/breathing_led.h`
+- `src/drivers/breathing_led.c`
 
 公共 API：
 
 ```c
 /* 初始化：自动反推 (PSC, ARR)，配置 GPIO + 寄存器，启动输出。 */
-stm_status_t tim2_ch1_pwm_init_hz(uint32_t pwm_frequency_hz,
+stm_status_t breathing_led_init_hz(uint32_t carrier_hz,
                                   uint16_t duty_permille);
 
 /* 仅改 CCR1：PSC/ARR 不变，PWM 频率不变（运行中无毛刺）。 */
-stm_status_t tim2_ch1_pwm_set_duty_permille(uint16_t duty_permille);
+stm_status_t breathing_led_set_duty_permille(uint16_t duty_permille);
 
 /* 改频率并可选同时更新占空比。 */
-stm_status_t tim2_ch1_pwm_set_hz(uint32_t pwm_frequency_hz,
+stm_status_t breathing_led_set_hz(uint32_t carrier_hz,
                                  uint16_t duty_permille);
 
 /* 停止计数并关闭 CH1 引脚输出。 */
-void tim2_ch1_pwm_stop(void);
+stm_status_t breathing_led_stop(void);
 ```
 
 设计思路：
@@ -155,7 +155,7 @@ $$
 
 记右侧为 `total`。两个寄存器都是 16 位，所以 `PSC+1 ∈ [1, 65536]`，`ARR+1 ∈ [1, 65536]`。
 
-本工程的两步策略（见 `tim2_ch1_pwm_resolve_timebase`）：
+本工程的两步策略（见 `stm_tim_resolve_timebase`）：
 
 ### 策略 1：精确解（优先）
 
@@ -180,7 +180,7 @@ arr = total / psc;
 
 ## 7. 寄存器配置时序（关键，避免毛刺）
 
-`tim2_ch1_pwm_apply_hw()` 的写寄存器顺序很有讲究：
+`breathing_led_apply_hw()` 的写寄存器顺序很有讲究：
 
 ```
 1. 停 CNT、屏蔽更新中断          ← 防止配到一半被旧周期打断
@@ -244,7 +244,7 @@ static void app_breath_led_poll(void) {
   uint16_t tri = (s_phase <= 200U) ? s_phase
                                    : (uint16_t)(APP_BREATH_PHASE_MAX - s_phase);
   uint16_t duty = (uint16_t)(((uint32_t)tri * 1000U) / 200U);
-  (void)tim2_ch1_pwm_set_duty_permille(duty);
+  (void)breathing_led_set_duty_permille(duty);
 }
 ```
 
@@ -322,7 +322,7 @@ PWM 频率 1kHz、20% 占空时，等效平均电流 ≈ 6mA，临时跑没问�
 
 6. **ARR=0**
    - 症状：定时器卡死，UEV 不触发
-   - 限制：`tim2_ch1_pwm_resolve_timebase` 已保证 `ARR+1 ≥ 1`
+   - 限制：`stm_tim_resolve_timebase` 已保证 `ARR+1 ≥ 1`
 
 7. **直驱 LED 烧 GPIO**
    - 症状：跑几小时/几天后某个引脚不响应
@@ -334,3 +334,180 @@ PWM 频率 1kHz、20% 占空时，等效平均电流 ≈ 6mA，临时跑没问�
 
 PWM 在 STM32F1 上的本质 = **CNT 在 [0..ARR] 循环，CCR1 决定切换点**。
 工程化的核心是：**PSC/ARR 一次配好不再动，运行中只改 CCR1 → 频率稳定、占空可平滑变化**。
+
+---
+
+# English
+
+# STM32F103 PWM Overview (This Project)
+
+This document explains PWM in this project: concepts, register flow, API design, frequency/duty math, breath-LED example, pitfalls, and debug.
+
+---
+
+## 1. PWM Mental Model
+
+PWM = within a fixed **carrier period**, output toggles between **active** and **inactive** levels; the ratio expresses 0–100% “intensity”.
+
+Common uses:
+
+- LED brightness
+- DC motor speed
+- Servo (50 Hz, 1–2 ms high pulse)
+- Simple DAC (PWM + low-pass)
+
+| Parameter | Meaning |
+|-----------|---------|
+| **PWM frequency** | Carrier rate (e.g. 1 kHz = 1000 cycles/s) |
+| **Duty cycle** | Active time / period, 0–100% |
+| **Polarity** | Whether “active” is high or low |
+
+---
+
+## 2. How STM32F1 Timers Generate PWM
+
+PWM uses **general-purpose timer output compare** (TIM2/3/4, etc.).
+
+```
+TIM_CLK → PSC → CNT (0..ARR) → compare CCR1 → pin output (PWM mode 1: high while CNT < CCR1)
+```
+
+| Register | Role |
+|----------|------|
+| **PSC** | Prescale timer input |
+| **ARR** | Auto-reload; period = ARR+1 counts |
+| **CCR1** | Compare threshold → duty |
+| **CCMR1.OC1M** | PWM mode 1/2 |
+| **CCER.CC1E** | Enable channel output |
+| **CR1.CEN** | Counter enable |
+
+Formulas:
+
+$$T_{period} = \frac{(\mathrm{PSC}+1)(\mathrm{ARR}+1)}{T_{IM\_CLK}}$$
+
+$$\text{duty} = \frac{\mathrm{CCR1}}{\mathrm{ARR}+1}$$
+
+---
+
+## 3. Pins and Clock in This Project
+
+Files: `board_pins.h`, `rcc_board.h`, `board_init.c`
+
+- **Pin**: PA0 = TIM2_CH1 (no remap)
+- GPIO: AF push-pull 50 MHz (`BOARD_GPIO_PA0_AF_PP_50MHZ`)
+- Clock: `RCC_APB1ENR.TIM2EN`, `RCC_APB2ENR.IOPAEN`
+- **TIM2 input clock** (F1 rule):
+  - APB1 prescaler = 1: `TIM_CLK = PCLK1`
+  - APB1 prescaler ≠ 1: `TIM_CLK = 2 × PCLK1`
+  - 72 MHz profile: PCLK1=36 MHz → TIM2 = 72 MHz
+
+---
+
+## 4. PWM API Design
+
+Files: `include/drivers/breathing_led.h`, `src/drivers/breathing_led.c`
+
+```c
+stm_status_t breathing_led_init_hz(uint32_t carrier_hz, uint16_t duty_permille);
+stm_status_t breathing_led_set_duty_permille(uint16_t duty_permille);
+stm_status_t breathing_led_set_hz(uint32_t carrier_hz, uint16_t duty_permille);
+stm_status_t breathing_led_stop(void);
+```
+
+- App declares frequency + duty; driver computes PSC/ARR/CCR1
+- Duty in **permille 0..1000** (finer than percent)
+- Split APIs: breath LED only changes duty; frequency scans use `set_hz`
+
+---
+
+## 5. Why Permille
+
+Percent 0..100 on ARR=999 loses resolution (e.g. 1% → CCR1=9 ≈ 0.9%).
+
+Permille with rounding:
+
+`CCR1 = (duty × ticks + 500) / 1000`
+
+1000 maps to full period; integer-only, no FPU.
+
+---
+
+## 6. Frequency Resolution (PSC, ARR)
+
+Need `(PSC+1)(ARR+1) = TIM_CLK / pwm_hz` = `total`, both ≤ 65536.
+
+**Strategy 1 (exact)**: Scan `PSC+1` from 1; if it divides `total` and `ARR+1` fits, use smallest PSC+1 for best duty resolution.
+
+**Strategy 2 (fallback)**: If no exact factor, approximate with ceiling division so ARR does not overflow—small frequency error, OK for LED/motor.
+
+---
+
+## 7. Register Sequence (Glitch Avoidance)
+
+`breathing_led_apply_hw()` order:
+
+1. Stop CNT, mask update IRQ
+2. CCMR1: output, PWM1, preload
+3. CCER: polarity, CC1E
+4. Write PSC/ARR/CCR1 (ARPE on)
+5. `EGR.UG=1` (load shadow)
+6. Clear `SR.UIF` from UG
+7. `CR1.CEN=1`
+
+**Shadow registers (ARPE/OC1PE)**: ARR/CCR update on update event—no mid-period chop.
+
+**EGR.UG**: First period uses new values; clears UIF afterward.
+
+---
+
+## 8. Application: Breath LED
+
+`app_breath_led_poll()` in `app.c`:
+
+- Throttle to 12 ms per step
+- Phase 0..399, triangle wave → duty 0..1000 permille
+- ~4.8 s full cycle
+- `breathing_led_set_duty_permille(duty)` only
+- `uint32_t` time diff handles SysTick wrap
+
+---
+
+## 9. Wiring
+
+### A: With resistor (recommended)
+
+PA0 — resistor — LED — GND. Typical 220Ω–1kΩ.
+
+### B: No resistor (emergency)
+
+Cap duty at ~200 permille (20%) to limit average current—not for long-term use without resistor.
+
+---
+
+## 10. Parameter Suggestions
+
+| Application | PWM frequency | Notes |
+|-------------|---------------|-------|
+| LED | 500 Hz–2 kHz | Below ~100 Hz visible flicker |
+| DC motor | 5–25 kHz | >20 kHz quieter |
+| Servo | 50 Hz | 1–2 ms high = 5–10% duty |
+| Buzzer | tone = frequency, ~50% duty | Change frequency not duty |
+| Simple DAC | ≥10 kHz | RC low-pass |
+
+---
+
+## 11. Common Errors
+
+1. GPIO not AF push-pull — PA0 stuck/wrong
+2. `TIM2EN` off — registers read 0
+3. `CC1E` off — no pin activity
+4. No `UG` — first period wrong duty
+5. Wrong APB1 timer clock — 2× frequency error
+6. ARR=0 — timer stuck
+7. LED without resistor — GPIO damage over time
+
+---
+
+## 12. One-Line Summary
+
+PWM on F1 = **CNT rolls 0..ARR, CCR1 sets the switch point**. Engineering = **set PSC/ARR once, only change CCR1 at runtime** for stable frequency and smooth duty changes.

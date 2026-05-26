@@ -12,7 +12,7 @@
 #include "drivers/sensor_led.h"
 #include "drivers/ir_reflect.h"
 #include "drivers/thermistor.h"
-#include "drivers/pwm.h"
+#include "drivers/breathing_led.h"
 #include "drivers/ssd1306_oled.h"
 #include "hal/i2c1_master.h"
 #include "drivers/usart1.h"
@@ -28,8 +28,8 @@ static const usart1_config_t g_board_console_config = {
     .enable_rx_interrupt = 0U,
 };
 
-static const tim2_ch1_pwm_config_t g_board_status_led_config = {
-    .pwm_hz = BOARD_STATUS_LED_PWM_HZ,
+static const breathing_led_config_t g_board_breathing_led_config = {
+    .carrier_hz = BOARD_STATUS_LED_PWM_HZ,
     .duty_permille = 0U,
 };
 
@@ -117,11 +117,11 @@ stm_status_t bsp_display_write_text_atf(uint16_t page, uint16_t col_px,
 }
 
 stm_status_t bsp_status_led_init(void) {
-  return tim2_ch1_pwm_init_with_config(&g_board_status_led_config);
+  return breathing_led_init_with_config(&g_board_breathing_led_config);
 }
 
 stm_status_t bsp_status_led_set_duty_permille(uint16_t duty_permille) {
-  return tim2_ch1_pwm_set_duty_permille(duty_permille);
+  return breathing_led_set_duty_permille(duty_permille);
 }
 
 stm_status_t bsp_wheel_encoder_init(void) {

@@ -18,6 +18,7 @@
 #include "drivers/adc1_dual_scan_dma.h"
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/clock.h"
 #include "bsp/rcc_board.h"
 #include "bsp/stm32f103_regs.h"
@@ -25,9 +26,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define ADC1_DUAL_CH_PHOTO          (1U)
-#define ADC1_DUAL_CH_THERM          (2U)
-#define ADC1_DUAL_CH_IR_REFLECT     (3U)
+#define ADC1_DUAL_CH_PHOTO          BOARD_ADC_CH_PHOTO
+#define ADC1_DUAL_CH_THERM          BOARD_ADC_CH_THERM
+#define ADC1_DUAL_CH_IR_REFLECT     BOARD_ADC_CH_IR
 
 #define ADC1_DUAL_CALIB_DELAY_LOOPS (2000U)
 #define ADC1_DUAL_FLAG_TIMEOUT_LOOPS (200000U)
@@ -164,18 +165,21 @@ static stm_status_t adc1_dual_adc_calibrate(void) {
 }
 
 static void adc1_dual_configure_gpio_analog(void) {
-  GPIOA_CRL = (GPIOA_CRL & ~(BOARD_GPIO_PA1_CRL_MASK | BOARD_GPIO_PA2_CRL_MASK |
-                              BOARD_GPIO_PA3_CRL_MASK)) |
-              BOARD_GPIO_PA1_ANALOG | BOARD_GPIO_PA2_ANALOG | BOARD_GPIO_PA3_ANALOG;
+  board_gpio_apply_crl(BOARD_GPIO_ADC_CR_REG, BOARD_GPIO_ADC_CR_MASK,
+                       BOARD_GPIO_ADC_ANALOG_MODE);
 }
 
 static void adc1_dual_configure_scan_sequence(void) {
-  uint32_t smpr_mask = (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP1_SHIFT) |
-                       (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP2_SHIFT) |
-                       (ADC_SMPR2_SMP_MASK << ADC_SMPR2_SMP3_SHIFT);
+  const uint32_t ch_photo = ADC1_DUAL_CH_PHOTO;
+  const uint32_t ch_therm = ADC1_DUAL_CH_THERM;
+  const uint32_t ch_ir = ADC1_DUAL_CH_IR_REFLECT;
+  uint32_t smpr_mask = (ADC_SMPR2_SMP_MASK << (ch_photo * 3U)) |
+                       (ADC_SMPR2_SMP_MASK << (ch_therm * 3U)) |
+                       (ADC_SMPR2_SMP_MASK << (ch_ir * 3U));
 
-  ADC1_SMPR2 = (ADC1_SMPR2 & ~smpr_mask) | ADC_SMPR2_SMP1_MAX |
-               ADC_SMPR2_SMP2_MAX | ADC_SMPR2_SMP3_MAX;
+  ADC1_SMPR2 = (ADC1_SMPR2 & ~smpr_mask) |
+               (7U << (ch_photo * 3U)) | (7U << (ch_therm * 3U)) |
+               (7U << (ch_ir * 3U));
   ADC1_SQR1 = (ADC1_SQR1 & ~ADC_CR1_L_MASK) | ADC_CR1_L_3_CONV;
   ADC1_SQR3 = ADC_SQR3_SQ1(ADC1_DUAL_CH_PHOTO) |
               ADC_SQR3_SQ2(ADC1_DUAL_CH_THERM) |

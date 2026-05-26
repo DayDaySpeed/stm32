@@ -528,3 +528,224 @@ A, B        → 接 STM32 输入（一个轮子用 TIM3、另一个用 TIM4）
 
 正交编码器在 STM32F1 上的本质 = **TIM 编码器模式让硬件自动数 A/B 边沿、判方向**，CPU 只读 CNT。
 工程化的核心是：**PSC=0、SMS=ENC3、IC1F/IC2F 开最大档位** —— 三件事配对，4x 解码 + EMI 免疫一步到位。
+
+---
+
+# English
+
+# STM32F103 Quadrature Encoder Overview (This Project)
+
+Covers principles, STM32 hardware decode, registers, API, digital filter, **field debugging**, and balance-bot porting notes.
+
+---
+
+## 1. Quadrature Encoder Mental Model
+
+Two signals **90° apart** on a shaft: **phase order** → direction, **edge count** → displacement.
+
+Uses: knobs (EC11), motor speed (Hall/optical), balance bots, CNC feedback.
+
+| Concept | Meaning |
+|---------|---------|
+| A / B phase | Quadrature square waves |
+| Direction | A leads B = CW; B leads A = CCW |
+| Resolution | Lines N (PPR); **4× decode** → 4N counts/rev |
+
+**4× decoding**: count rising+falling on both A and B → 4 edges per quadrature cycle. 1000 PPR motor → 4000 counts/rev. **Z (index)** optional for absolute zero—not used here.
+
+---
+
+## 2. STM32F1 Hardware Decode
+
+TIM2/3/4/5 **encoder interface**: slave mode **TI1+TI2** drives **CNT**.
+
+```
+PA6 (A) → TI1 ─┐
+               ├→ quadrature FSM (SMCR.SMS=011) → CNT ±1, CR1.DIR
+PA7 (B) → TI2 ─┘
+```
+
+| Register | Role |
+|----------|------|
+| CCMR1.CC1S/CC2S | CH1/CH2 as TI1/TI2 inputs |
+| CCMR1.IC1F/IC2F | Digital filter 0..0xF |
+| CCER.CC1E/CC2E | Enable inputs |
+| CCER.CC1P/CC2P | Polarity (swap/invert direction) |
+| SMCR.SMS | 001=ENC1, 010=ENC2, **011=ENC3 (4×)** |
+| ARR | Often 0xFFFF wrap |
+| PSC | **Must be 0** in encoder mode |
+| CNT | Position counter |
+| CR1.DIR | Hardware direction flag |
+
+After setup, **hardware runs**; CPU reads CNT only.
+
+---
+
+## 3. Pins and Clock
+
+- **PA6** = TIM3_CH1 (A), **PA7** = TIM3_CH2 (B)
+- GPIO: input with pull-up (`0x8` in CRL, ODR bits = 1)
+- TIM3 on APB1; when prescaler ≠ 1, timer clk = **72 MHz** (affects filter sampling only, not decode logic)
+- `RCC_TIM3EN` in `bsp_board_init()`
+
+---
+
+## 4. Driver API
+
+`encoder.h` / `encoder.c`:
+
+```c
+stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction);
+int16_t      tim3_encoder_get_count(void);
+void         tim3_encoder_reset_count(void);
+uint8_t      tim3_encoder_get_direction(void);
+```
+
+1. `direction` at init—flip in software without rewiring
+2. `int16_t` count + `(int16_t)(now - prev)` handles **16-bit wrap**
+3. `get_direction` for debug only when moving
+4. `reset_count` for zeroing
+
+---
+
+## 5. Init Register Flow
+
+1. GPIO PA6/PA7 input pull-up
+2. `CEN=0`, `PSC=0`, `ARR=0xFFFF`
+3. CCMR1: TI1/TI2, **IC1F/IC2F = max**
+4. CCER: polarity; `CC1P` if inverted; CC1E/CC2E=1
+5. `SMCR.SMS = 011` (ENC3)
+6. `CNT=0`, clear SR
+7. `CEN=1`
+
+---
+
+## 6. Digital Filter (IC1F / IC2F) — Main Pitfall
+
+### 6.1 What it does
+
+N-of-N sampling after Schmitt: edge only accepted after **N** consecutive filtered samples differ.
+
+**0b1111** (project default):
+
+| Parameter | Value |
+|-----------|-------|
+| fSAMPLING | fDTS/32 = 72 MHz/32 = **2.25 MHz** |
+| N | 8 |
+| Window | ~**3.5 µs** |
+
+Pulses shorter than 3.5 µs rejected; mechanical edges (ms) pass.
+
+### 6.2 Why critical here
+
+Board runs PWM (PA0), I2C (PB8/9), USART (PA9)—capacitive coupling injects **ns–µs** glitches on PA6/7. Asymmetric coupling → **direction bias**; variable noise → **inconsistent counts per detent**.
+
+### 6.3 Filter table (IC1F @ fDTS=72 MHz)
+
+| IC1F | fSAMPLING | N | Window | Use |
+|------|-----------|---|--------|-----|
+| 0000 | — | — | none | Clean optical only |
+| … | … | … | … | … |
+| **1111** | fDTS/32 | 8 | **~3.5 µs** | **Strongest (default)** |
+
+$$T_{window} = \frac{N \times divisor}{f_{DTS}}$$
+
+### 6.4 Fix in project
+
+Enable `TIM_CCMR1_IC1F_MAX | IC2F_MAX` → stable **±4 per detent**, correct sign.
+
+---
+
+## 7. Wiring
+
+| Encoder pin | STM32 |
+|-------------|-------|
+| A | PA6 |
+| B | PA7 |
+| C/COM/GND | **GND** (recommended) |
+| VCC (module) | 3.3 V |
+
+EC11 mechanical encoder often needs no VCC; KY-040 module needs 3.3 V.
+
+OLED test: `CNT`, `dlt`, `dir`—one detent ≈ **±4** in 4× mode. Wrong direction → `TIM3_ENCODER_DIR_INVERTED` in `app.c`.
+
+---
+
+## 8. Application (Cooperative, No IRQ)
+
+```c
+int16_t delta = (int16_t)(now - s_enc_prev);
+/* speed = delta / dt; rad/s = speed * (2π / (4*N_PPR)) */
+```
+
+| Use | Period |
+|-----|--------|
+| Balance control | 5–10 ms |
+| Knob UI | 10–20 ms |
+| Display | 100–500 ms |
+
+Need `|delta| < 32768` per period.
+
+---
+
+## 9. Field Debug: Wrong Sign + Variable Steps
+
+### Symptoms
+
+- Idle stable ✓
+- Steps: -2, -7, -15, … inconsistent
+- Both rotation directions count negative
+
+### Root cause (actual)
+
+EMI from PWM/I2C/UART—not missing GND alone. ns glitches look like valid quadrature edges; PWM edges dominate manual rotation.
+
+### Fix
+
+`IC1F/IC2F = MAX` only—stable ±4, correct direction.
+
+### Lessons
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Drift when idle + moving | Floating reference | Wiring, pull-up, GND |
+| Idle OK + direction bias | EMI | **Max digital filter** |
+| Variable step + bias | Variable noise | Filter |
+| Stable step + correct dir | OK | — |
+
+Still **connect C to GND** for production.
+
+---
+
+## 10. Balance Bot Porting
+
+Per wheel: Hall encoder A/B → TIM3 + TIM4 copy.
+
+- PSC=0, ARR=0xFFFF
+- Keep **IC1F/IC2F = 0xF** (H-bridge EMI)
+- Speed:
+
+$$v\ (\mathrm{rad/s}) = \frac{\Delta}{4 N_{PPR}} \cdot \frac{2\pi}{\Delta t}$$
+
+Left TIM3, right TIM4 independent.
+
+---
+
+## 11. Common Errors
+
+1. `TIM3EN` off — registers zero
+2. No input pull-up — random CNT
+3. **PSC ≠ 0** — lost edges (not like PWM)
+4. SMS ≠ 011 — CNT frozen
+5. CCxE off — no TI path
+6. Direction inverted — `TIM3_ENCODER_DIR_INVERTED`
+7. §9 symptom — enable max filter
+8. Huge sporadic delta — sample period too long
+9. C not GND — may work until environment changes
+10. Long unshielded wires — motor EMI drift
+
+---
+
+## 12. One-Line Summary
+
+Encoder on F1 = **TIM encoder mode counts A/B in hardware**. Engineering trio: **`PSC=0`, `SMS=ENC3`, max `IC1F/IC2F`** for 4× decode and EMI immunity.

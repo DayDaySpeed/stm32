@@ -406,3 +406,268 @@ SRAM:  0x20000000
 - [GCC Common Variable Attributes](https://gcc.gnu.org/onlinedocs/gcc/Common-Variable-Attributes.html)  
 - [GCC Type Attributes](https://gcc.gnu.org/onlinedocs/gcc/Type-Attributes.html)  
 - ARM ABI / Cortex-M 文档（与具体芯片、工具链版本对照）
+
+---
+
+# English
+
+# GCC Compiler Extensions and Embedded Design
+
+This document explains **GCC compiler extensions** beyond standard C, focusing on `__attribute__` and why embedded firmware relies on them.
+
+---
+
+## Table of Contents
+
+- [1. What Are Compiler Extensions](#1-what-are-compiler-extensions)
+- [2. Why Embedded Code Depends on Them](#2-why-embedded-code-depends-on-them)
+- [3. Core Mechanism: `__attribute__`](#3-core-mechanism-__attribute__)
+- [4. `weak`](#4-weak)
+- [5. `packed`](#5-packed)
+- [6. `aligned`](#6-aligned)
+- [7. `section`](#7-section)
+- [8. `unused`](#8-unused)
+- [9. `noreturn`](#9-noreturn)
+- [10. `always_inline`](#10-always_inline)
+- [11. Interrupt and `interrupt` Attribute](#11-interrupt-and-interrupt-attribute)
+- [12. Nature and Pipeline Stages](#12-nature-and-pipeline-stages)
+- [13. Three Pillars of Embedded Work](#13-three-pillars-of-embedded-work)
+- [14. Linker Script and Startup](#14-linker-script-and-startup)
+- [15. Philosophy of `weak`](#15-philosophy-of-weak)
+- [16. Standard Attributes (C23 / C++)](#16-standard-attributes-c23--c)
+- [17. Summary](#17-summary)
+- [References](#references)
+
+---
+
+## 1. What Are Compiler Extensions
+
+**Standard C** defines syntax, library, and portable semantics.
+
+**Low-level / systems programming** often needs:
+
+- Exact memory layout and alignment
+- Cooperation with interrupts, reset, and link layout
+- Hardware constraints beyond the standard
+
+Compilers add **extensions**: keywords, **attributes**, built-ins. In GCC, often `__attribute__((...))`.
+
+---
+
+## 2. Why Embedded Depends on Extensions
+
+| Concern | Notes |
+|---------|-------|
+| Memory layout | Flash/RAM map, bootloader split |
+| Interrupts | ISR calling convention, vector table |
+| Alignment | DMA, cache, peripheral buffers |
+| Weak symbols | Default ISR/callbacks, user override |
+| Special sections | Hot code in SRAM, constants in ROM |
+
+Standard C does not define sections, vector placement, or weak linking rules.
+
+> **Embedded practice ≈ C + compiler extensions + linker script (+ startup asm)**
+
+---
+
+## 3. Core Mechanism: `__attribute__`
+
+```c
+__attribute__((attribute list))
+```
+
+Applies to functions, variables, types, labels—guides code generation, placement, warnings.
+
+- Multiple attributes in one pair: `section(".foo"), aligned(16)`
+- **Compiler-specific**—verify when changing toolchain
+
+---
+
+## 4. `weak`
+
+### 4.1 Syntax
+
+```c
+__attribute__((weak))
+void foo(void) { }
+```
+
+### 4.2 Meaning
+
+**Weak symbol**: if a **strong** symbol with the same name exists at link time, the strong one wins; weak is discarded.
+
+### 4.3 Override pattern
+
+Library/startup:
+
+```c
+__attribute__((weak))
+void USART1_IRQHandler(void) { }
+```
+
+Application strong symbol replaces it—no library edit.
+
+### 4.4 Design idea
+
+Default implementation + optional user replacement (STM32 HAL, CMSIS, FreeRTOS, Linux kernel).
+
+### 4.5 Cautions
+
+Multiple weak definitions without strong—toolchain-dependent; avoid relying on that.
+
+---
+
+## 5. `packed`
+
+Tight struct layout without padding:
+
+```c
+struct __attribute__((packed)) Packet {
+    uint8_t  header;
+    uint32_t data;
+};
+```
+
+Use for wire formats, register maps. **Cost**: possible unaligned access faults or slower loads on some CPUs.
+
+---
+
+## 6. `aligned`
+
+```c
+uint8_t dma_buf[512] __attribute__((aligned(32)));
+```
+
+Forces start address alignment (power of 2 per GCC rules)—DMA/cache/MPU requirements.
+
+---
+
+## 7. `section`
+
+```c
+__attribute__((section(".fastcode")))
+void critical_func(void) { }
+```
+
+Places symbol in named ELF section; **linker script** must map that section (e.g. to fast SRAM). Used for hot paths, boot/App images, vector tables.
+
+| Region | Typical trait |
+|--------|----------------|
+| Flash | Larger, slower than SRAM |
+| SRAM | Fast, smaller |
+| CCM etc. | Chip-specific |
+| External | May need XIP/cache |
+
+---
+
+## 8. `unused`
+
+```c
+static int x __attribute__((unused));
+void hook(int ctx __attribute__((unused))) { }
+```
+
+Suppresses `-Wunused-*` for intentionally unused symbols. C23/C++17: `[[maybe_unused]]`.
+
+---
+
+## 9. `noreturn`
+
+```c
+__attribute__((noreturn))
+void panic(void) { while (1) { } }
+```
+
+Function never returns normally—enables better CFG optimization. Mismatch with actual return is UB risk.
+
+---
+
+## 10. `always_inline`
+
+```c
+static inline __attribute__((always_inline))
+void gpio_set(...) { }
+```
+
+Forces inlining—less call overhead; can **inflate code size**. Use sparingly with `-Os`.
+
+---
+
+## 11. Interrupt and `interrupt` Attribute
+
+On some targets:
+
+```c
+__attribute__((interrupt))
+void TIM2_IRQHandler(void);
+```
+
+Semantics vary by CPU/ABI. On **ARM Cortex-M**, vectors usually point to normal C functions under **AAPCS**; whether `interrupt` attribute is required depends on GCC target docs and vendor examples—**match startup and vector table**.
+
+---
+
+## 12. Nature and Pipeline Stages
+
+Extensions constrain **code, symbols, and final image**.
+
+| Stage | Effect |
+|-------|--------|
+| Compile | Instructions, calling convention, layout |
+| Link | Weak/strong, section merge, memory map |
+| Run | Timing, ISR/DMA, cache (indirect) |
+
+---
+
+## 13. Three Pillars
+
+1. **C** — portable logic  
+2. **Compiler extensions** — symbols, alignment, sections  
+3. **Linker script + startup** — addresses, vectors, `.data`/BSS init  
+
+---
+
+## 14. Linker Script and Startup
+
+Example map:
+
+```text
+Flash: 0x08000000
+SRAM:  0x20000000
+```
+
+Startup + `.ld` + CRT ensure vectors, data copy, BSS zero, aligned DMA buffers—**not expressible in standard C alone**.
+
+---
+
+## 15. Philosophy of `weak`
+
+**Overridable defaults**: framework ships empty/safe handler; product links strong symbol. Same idea as virtual methods, driver probes, HAL callbacks.
+
+---
+
+## 16. Standard Attributes (C23 / C++)
+
+`[[nodiscard]]`, `[[maybe_unused]]`, `[[noreturn]]`, etc. Bare-metal still heavily uses GCC-specific `section`, `weak`, `packed`—migrate case by case.
+
+---
+
+## 17. Summary
+
+| Topic | One line |
+|-------|----------|
+| Extensions | Control codegen and binary layout beyond ISO C |
+| `__attribute__` | Implementation-specific directives |
+| `weak` | Default + link-time override |
+| Embedded bottom | Hardware + memory map + CPU behavior |
+
+Leads naturally to compiler manual, ABI, linker, and CPU docs.
+
+---
+
+## References
+
+- [GCC Attribute Syntax](https://gcc.gnu.org/onlinedocs/gcc/Attribute-Syntax.html)  
+- [GCC Common Function Attributes](https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html)  
+- [GCC Common Variable Attributes](https://gcc.gnu.org/onlinedocs/gcc/Common-Variable-Attributes.html)  
+- [GCC Type Attributes](https://gcc.gnu.org/onlinedocs/gcc/Type-Attributes.html)  
+- ARM ABI / Cortex-M documentation (match your chip and toolchain version)

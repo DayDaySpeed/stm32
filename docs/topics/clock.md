@@ -272,3 +272,254 @@ I2C1 在 APB1，关键参数依赖 `PCLK1`：
 时钟系统工程化的核心不是“会配某个寄存器”，而是：  
 **把 RCC 细节封装在 `bsp_clock`，让业务层只声明频率目标，并确保所有外设都用统一的频率来源进行参数计算。**
 
+---
+
+# English
+
+# STM32F103 Clock System Overview (This Project)
+
+This document explains everything clock-related in this project in one place: clock-tree concepts, code flow, key RCC/FLASH/SysTick/TIM registers, common pitfalls, and troubleshooting.
+
+---
+
+## 1. Build a Mental Model First
+
+On STM32F103, the clock is not a single number—it is a tree:
+
+1. Clock sources (HSI/HSE)
+2. Through PLL (optional multiplication)
+3. Form SYSCLK (system clock)
+4. Then divided into:
+   - HCLK (AHB)
+   - PCLK1 (APB1)
+   - PCLK2 (APB2)
+5. Peripherals take clocks from their bus (USART, TIM, I2C, SysTick, etc.)
+
+The interface goal in this project: **upper layers only declare “I want 8 MHz or 72 MHz”; the BSP handles RCC details.**
+
+---
+
+## 2. Clock Interface in This Project
+
+Files:
+
+- `include/bsp/clock.h`
+- `src/bsp/clock.c`
+
+Core APIs:
+
+- `bsp_clock_apply_profile(BSP_CLOCK_PROFILE_HSI_8MHZ)`
+- `bsp_clock_apply_profile(BSP_CLOCK_PROFILE_HSE_PLL_72MHZ)`
+- `bsp_clock_get_sysclk_hz()`
+- `bsp_clock_get_hclk_hz()`
+- `bsp_clock_get_pclk1_hz()`
+- `bsp_clock_get_pclk2_hz()`
+
+Design:
+
+- Profiles encapsulate full RCC switch sequences
+- Getters supply the real frequencies to drivers
+- Drivers (USART/TIM/SysTick/I2C) no longer hard-code 8 MHz
+
+---
+
+## 3. Code Flow (Actual Project)
+
+In `main`, set the clock before board init:
+
+1. `bsp_clock_apply_profile(...)`
+2. `bsp_board_init()` (enable peripheral clock gates)
+3. `app_init()`
+
+Why clock first:
+
+- Peripheral parameters (BRR, PSC/ARR) depend on `PCLK`
+- Configure clock, then compute dividers—most stable order
+
+---
+
+## 4. Key RCC Registers and Bits
+
+Defined in `include/bsp/stm32f103_regs.h`.
+
+### 4.1 `RCC_CR` (Clock control)
+
+Common bits:
+
+- `HSION/HSIRDY`: internal 8 MHz HSI enable/ready
+- `HSEON/HSERDY`: external HSE enable/ready (often 8 MHz crystal)
+- `PLLON/PLLRDY`: PLL enable/ready
+
+Usage:
+
+- Enable a source, poll RDY
+- Switching without RDY can cause runaway behavior
+
+### 4.2 `RCC_CFGR` (Clock configuration)
+
+Common bits:
+
+- `SW[1:0]`: system clock selection (HSI/HSE/PLL)
+- `SWS[1:0]`: actual system clock status (confirm switch)
+- `HPRE`: AHB prescaler
+- `PPRE1`: APB1 prescaler
+- `PPRE2`: APB2 prescaler
+- `PLLSRC`: PLL input (HSI/2 or HSE)
+- `PLLXTPRE`: HSE prescaler before PLL
+- `PLLMUL`: PLL multiplier (×2–×16; F1 often ×9)
+
+Typical 72 MHz path:
+
+- HSE = 8 MHz
+- PLLSRC = HSE
+- PLLXTPRE = /1
+- PLLMUL = ×9
+- SYSCLK = 72 MHz
+
+### 4.3 `RCC_APB2ENR` / `RCC_APB1ENR` (peripheral clock gates)
+
+Even with SYSCLK configured, peripherals need their EN bits set.
+
+This project examples:
+
+- APB2: AFIO / GPIOA / GPIOB / USART1
+- APB1: I2C1 / TIM2
+
+---
+
+## 5. FLASH and High Frequency (Required at 72 MHz)
+
+Register: `FLASH_ACR`
+
+Common bits:
+
+- `LATENCY`: Flash wait states
+- `PRFTBE`: prefetch buffer enable
+
+Why:
+
+- At 72 MHz, Flash cannot keep up without wait states
+- Typical: `LATENCY=2` + prefetch on
+
+If skipped:
+
+- Random faults, HardFault, lockups
+
+---
+
+## 6. SysTick and Clock
+
+Registers: `SYST_CSR`, `SYST_RVR`, `SYST_CVR`
+
+1 ms formula in this project:
+
+`reload = HCLK / 1000 - 1`
+
+Note:
+
+- After changing SYSCLK, recompute `reload` with new `HCLK`
+- Project uses `bsp_clock_get_hclk_hz()` for this
+
+---
+
+## 7. TIM and Clock (TIM2)
+
+- TIM2 is on APB1
+- When APB1 prescaler ≠ 1, timer clock = `2 × PCLK1` (F1 rule)
+
+TIM input clock is not always equal to PCLK1.
+
+This project:
+
+- `tim2_init_1hz_interrupt()` checks APB1 division
+- Uses `pclk1` or `2*pclk1` as needed
+
+---
+
+## 8. USART and Clock
+
+USART1 is on APB2; bus clock is `PCLK2`.
+
+BRR must use `PCLK2`, not SYSCLK blindly—or baud rate drifts and garbles.
+
+Project uses `BSP_PCLK2_HZ`.
+
+---
+
+## 9. I2C and Clock
+
+I2C1 is on APB1; timing depends on `PCLK1`:
+
+- `CR2.FREQ` (MHz)
+- `CCR`
+- `TRISE`
+
+After a frequency change, recompute all three or timing/ACK fails.
+
+---
+
+## 10. 8 MHz vs 72 MHz (Engineering View)
+
+8 MHz (HSI):
+
+- Simple, stable, good for learning
+- Lower performance
+
+72 MHz (HSE+PLL):
+
+- ~9× performance
+- Requires FLASH latency, dividers, more edge cases
+
+Suggestion:
+
+- Start at 8 MHz for learning
+- Move to 72 MHz when you need performance
+
+---
+
+## 11. Standard 72 MHz Switch Sequence (Register Order)
+
+1. Enable HSE, wait HSERDY
+2. Configure FLASH `LATENCY/PRFTBE`
+3. Configure CFGR: dividers, PLLSRC, PLLMUL
+4. Enable PLL, wait PLLRDY
+5. `SW=PLL` for system clock
+6. Read `SWS` to confirm
+7. Update software frequency cache (sysclk/hclk/pclk)
+
+---
+
+## 12. Common Errors and Symptoms
+
+1. **Switch without waiting RDY** — intermittent hang, unstable boot
+2. **Forgot FLASH latency** — random HardFault at 72 MHz
+3. **Drivers still use old frequency** — wrong baud, wrong TIM period, I2C no ACK
+4. **Wrong APB1 timer clock** — TIM frequency off by 2×
+5. **Macro says 72 MHz but RCC still 8 MHz** — software/ hardware mismatch
+
+---
+
+## 13. How to Use in This Project
+
+At the start of `main`:
+
+- 8 MHz: `bsp_clock_apply_profile(BSP_CLOCK_PROFILE_HSI_8MHZ)`
+- 72 MHz: `bsp_clock_apply_profile(BSP_CLOCK_PROFILE_HSE_PLL_72MHZ)`
+
+Other drivers use getters and auto-compute parameters.
+
+---
+
+## 14. Possible Extensions
+
+- More profiles (36 MHz / 48 MHz)
+- `bsp_clock_config_t` for custom setups
+- Fallback if HSE fails (return to HSI)
+- Print clock info on UART for self-test
+
+---
+
+## 15. One-Line Summary
+
+Clock engineering is not “know one register”—it is **hide RCC in `bsp_clock`, let the app declare a frequency target, and ensure every peripheral uses the same frequency source for parameter math.**
+

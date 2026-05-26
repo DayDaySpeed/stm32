@@ -80,3 +80,90 @@ SSD1306 使用方式：
 - [drivers/ssd1306_oled.md](../drivers/ssd1306_oled.md)  
 - [bsp/board_devices.md](../bsp/board_devices.md) — `bsp_display_*`  
 - [bsp/clock.md](../bsp/clock.md) — PCLK1 频率
+
+---
+
+# English
+
+# HAL Layer Documentation
+
+HAL (Hardware Abstraction Layer) in this project refers to **bus-level, slave-device-agnostic** thin wrappers. Currently only **I2C1 master write frames** are implemented.
+
+```
+drivers/ssd1306_oled.c
+    ↓  bus_write callback
+hal/i2c1_master.c
+    ↓  GPIO + I2C1 registers
+bsp/board_pins.h + bsp/clock.h + bsp/board_init()
+```
+
+---
+
+## Difference from drivers / bsp
+
+| Layer | Abstraction Level | Example in This Project |
+|-------|-------------------|-------------------------|
+| **bsp** | This board's pins + default bindings | PA9=USART1, `bsp_console_*` |
+| **hal** | On-chip bus capability | I2C START/address/data/STOP |
+| **drivers** | Specific chip protocol | SSD1306 command sequence, frame buffer |
+
+When adding a new I2C slave (e.g. MPU6050): reuse `i2c1_master_write_frame`, add `drivers/mpu6050.c`, **no HAL changes required**.
+
+---
+
+## Module List
+
+| Module | Documentation | Source File |
+|--------|---------------|-------------|
+| I2C1 master | [../drivers/i2c1_master.md](../drivers/i2c1_master.md) | `src/hal/i2c1_master.c` |
+
+> I2C1 documentation lives under `docs/drivers/` to sit next to SSD1306 docs; logically it still belongs to the HAL layer.
+
+---
+
+## I2C1 Key Points
+
+- **Pins**: PB8 SCL / PB9 SDA (I2C1 remapped, open-drain + external pull-ups)
+- **Init parameters**: `pclk1_hz` (`bsp_clock_get_pclk1_hz()`), `bus_hz` (typically 100000)
+- **Core API**: `i2c1_master_write_frame(addr7, ctrl, payload, len)`
+- **Recovery**: `i2c1_master_bus_recover()` — 9 pulses to release stuck SDA
+
+SSD1306 usage:
+
+- `ctrl=0x00`: command stream  
+- `ctrl=0x40`: GDDRAM data  
+
+Protocol and waveform details in [topics/I2C.md](../topics/I2C.md).
+
+---
+
+## Who Initializes What
+
+| Step | Caller |
+|------|--------|
+| Enable I2C1/GPIOB/AFIO clocks | `bsp_board_init()` |
+| `i2c1_master_init(...)` | Inside `ssd1306_default_init()` |
+| Bus recovery | `bsp_display_recover()` → `i2c1_master_bus_recover()` |
+
+Application layer **should not** init I2C directly unless adding an I2C device that does not go through SSD1306.
+
+---
+
+## Conventions for Extending HAL
+
+If adding SPI or I2C read:
+
+1. Source under `src/hal/`, headers under `include/hal/`  
+2. Register in `cmake/stm32_sources.cmake`  
+3. Depend on `bsp/clock.h` for timing calculation; pins from `board_pins.h`  
+4. Return `stm_status_t`; release bus on error paths  
+5. Cross-link in `docs/hal/README.md` and this directory  
+
+---
+
+## Related Documentation
+
+- [topics/I2C.md](../topics/I2C.md)  
+- [drivers/ssd1306_oled.md](../drivers/ssd1306_oled.md)  
+- [bsp/board_devices.md](../bsp/board_devices.md) — `bsp_display_*`  
+- [bsp/clock.md](../bsp/clock.md) — PCLK1 frequency

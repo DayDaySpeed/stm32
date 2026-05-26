@@ -81,3 +81,91 @@ if (usart1_read_line_try(line, sizeof(line)) == STM_OK) {
 - 未开 USART1/GPIOA 时钟 → 无输出
 - 未 enable RX 中断 → `read_line_try` 永远 BUSY
 - 行缓冲小于输入 → `STM_ERR_OVERFLOW`
+
+---
+
+# English
+
+# USART1 Console Driver (`usart1`)
+
+## Purpose
+
+**115200 8N1** serial console: blocking transmit, **RX interrupt + ring buffer**, non-blocking line read (supports backspace and multiple newline policies).
+
+## Hardware
+
+| Signal | Pin |
+|------|------|
+| TX | PA9 alternate-function push-pull |
+| RX | PA10 floating input |
+
+USART1 is on APB2; BRR computed from `bsp_clock_get_pclk2_hz()`.
+
+## Configuration Structure
+
+```c
+typedef struct {
+  uint32_t baudrate;
+  usart_oversampling_t oversampling;   /* 16× or 8× */
+  usart1_line_policy_t line_policy;    /* CR/LF/CRLF/CR or LF */
+  uint8_t enable_rx_interrupt;         /* enable RXNE interrupt at init */
+} usart1_config_t;
+```
+
+## API Reference
+
+| Function | Description |
+|------|------|
+| `usart1_init_with_config(config)` | BRR, GPIO, UE/TE/RE |
+| `usart1_init(baud, oversampling)` | Convenience wrapper |
+| `usart1_enable_rx_interrupt()` | RXNEIE + NVIC |
+| `usart1_irq_handler()` | Call from `USART1_IRQHandler` |
+| `usart1_write_byte_blocking` / `_string_blocking` | Wait for TXE, then transmit |
+| `usart1_read_byte_try(out)` | No data → `STM_ERR_BUSY` |
+| `usart1_read_line_try(out, size)` | Line complete → `STM_OK`; buffer full → `STM_ERR_OVERFLOW` |
+| `usart1_set_line_policy(policy)` | Change newline policy at runtime |
+
+Legacy API: `usart1_send_byte`, etc. (void/uint8_t return).
+
+## Implementation Notes
+
+### RX Path
+
+```
+RXNE interrupt → read DR → ring_buffer_push(64 bytes)
+Main loop → read_line_try → dequeue bytes, assemble line, support backspace 0x08
+```
+
+On overflow, new bytes are discarded and `g_usart1_rx_overflow` is set (extensible for diagnostics).
+
+### BRR Calculation
+
+16×: `BRR = round(PCLK/baud)`  
+8×: mantissa/fraction split into BRR low 4 bits (F103 requires BRR[3]=0).
+
+### Why line_policy Is Configurable
+
+Different terminals (minicom / screen / Windows) use different line endings; `CR_OR_LF` is most permissive.
+
+## Usage Example
+
+```c
+usart1_init(115200UL, USART_OVERSAMPLING_16);
+usart1_enable_rx_interrupt();
+
+char line[64];
+if (usart1_read_line_try(line, sizeof(line)) == STM_OK) {
+  usart1_write_string_blocking("echo: ");
+  usart1_write_string_blocking(line);
+}
+```
+
+Application layer uses `bsp_console_*`; interrupt vector calls `bsp_console_irq_handler()`.
+
+Full USART/NVIC details: [topics/USART.md](../topics/USART.md), [topics/NVIC.md](../topics/NVIC.md).
+
+## Common Pitfalls
+
+- USART1/GPIOA clock not enabled → no output
+- RX interrupt not enabled → `read_line_try` always BUSY
+- Line buffer smaller than input → `STM_ERR_OVERFLOW`

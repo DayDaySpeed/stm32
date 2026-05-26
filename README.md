@@ -2,7 +2,7 @@
 
 基于 **STM32F103C8T6**（64 KB Flash / 20 KB RAM）的寄存器级裸机项目，使用 **CMake + arm-none-eabi** 工具链构建，无 HAL/Cube 依赖。代码采用分层架构，接口统一、可测试、可移植，适用于产品原型开发与嵌入式教学。
 
-完整文档入口：[docs/INDEX.md](docs/INDEX.md)
+完整文档入口：[docs/INDEX.md](docs/INDEX.md)（各文档含中文 + English 双语章节）
 
 ---
 
@@ -14,7 +14,7 @@
 | 执行器 | TB6612 直流电机（PWM + 正反转）；有源蜂鸣器 |
 | 传感与指示 | ADC1 三路 SCAN+DMA（光敏 / NTC / 反射红外）；TIM1 双路传感器指示 LED |
 | 输入 | TIM3 正交编码器（旋钮调速） |
-| 状态 | TIM2 状态灯 PWM 呼吸效果 |
+| 状态 | 呼吸灯（TIM2 / PA0，`breathing_led` 驱动） |
 | 系统 | HSE+PLL 72 MHz；SysTick 1 ms；统一 `stm_status_t` 错误码；故障停机与可选日志 |
 
 应用层采用 **合作式任务调度**（`app.c`）：呼吸灯、编码器调速、红外接近检测、OLED 调试页、串口行输入显示等，均基于 `systick_get_ms()` 非阻塞运行。
@@ -167,3 +167,177 @@ cmake --build build --target lint     # cppcheck（若已安装）
 ## 许可证
 
 见 [LICENSE](LICENSE)。第三方数据手册见 `Document/`。
+
+---
+
+# English
+
+# STM32F103C8T6 Bare-Metal Firmware Project
+
+A register-level bare-metal project for the **STM32F103C8T6** (64 KB Flash / 20 KB RAM), built with **CMake** and the **arm-none-eabi** toolchain, with no HAL/Cube dependencies. The codebase uses a layered architecture with unified interfaces that are testable and portable, suitable for product prototyping and embedded systems education.
+
+Full documentation entry point: [docs/INDEX.md](docs/INDEX.md) (each document includes Chinese + English sections)
+
+---
+
+## Feature Overview
+
+| Category | Capability |
+|------|------|
+| Human–machine interface | USART1 console (115200, RX interrupt + line read); SSD1306 128×64 OLED (I2C1) |
+| Actuators | TB6612 DC motor (PWM + forward/reverse); active buzzer |
+| Sensing & indication | ADC1 triple-channel SCAN+DMA (ambient light / NTC / reflective IR); TIM1 dual-channel sensor indicator LEDs |
+| Input | TIM3 quadrature encoder (knob speed control) |
+| Status | Breathing LED (TIM2 / PA0, `breathing_led` driver) |
+| System | HSE+PLL 72 MHz; SysTick 1 ms; unified `stm_status_t` error codes; fault halt with optional logging |
+
+The application layer uses **cooperative task scheduling** (`app.c`): breathing LED, encoder speed control, IR proximity detection, OLED debug page, serial line input display, and more—all non-blocking via `systick_get_ms()`.
+
+---
+
+## Software Architecture
+
+```
+app/          Application logic, task scheduling
+  ↓
+bsp/          Board pins, clock gating, logical devices (board_devices)
+  ↓
+drivers/      Peripheral drivers (USART, PWM, ADC, OLED…)
+hal/          Bus transactions (I2C1 master write frames)
+  ↓
+common/       Status codes, ring buffer, logging, assertions
+bsp/regs      Register map (stm32f103_regs.h)
+```
+
+**Design Principles**
+
+- The application layer accesses hardware through `bsp/board_devices.h`, without directly binding to instance names such as `USART1` / `TIM2`.
+- Drivers return `stm_status_t`; initialization uses `*_init_with_config()` with configuration structs.
+- Board-tunable parameters are centralized in `include/bsp/board_config.h` (encoder direction, IR threshold, buzzer polarity, etc.).
+
+See [docs/bsp/README.md](docs/bsp/README.md) and [docs/DRIVER_API_GUIDE.md](docs/DRIVER_API_GUIDE.md) for details.
+
+---
+
+## Hardware Connections (Default)
+
+| Function | Pin | Notes |
+|------|------|------|
+| Status LED | PA0 | TIM2_CH1 PWM |
+| Ambient light / NTC / IR | PA1 / PA2 / PA3 | ADC1 IN1–IN3 |
+| Buzzer | PA4 | GPIO |
+| Encoder A/B | PA6 / PA7 | TIM3 |
+| LDR / NTC indicator LEDs | PA8 / PA11 | TIM1 CH1 / CH4 |
+| UART TX / RX | PA9 / PA10 | USART1 → USB serial module |
+| OLED I2C | PB8 / PB9 | I2C1 |
+| Motor PWM / direction | PB6 / PB5 / PB7 | TIM4 + TB6612 |
+
+Serial module (e.g. CH340): **PA9 → RXD, PA10 → TXD, GND common ground**, 115200 8N1.
+
+Pin diagrams and module wiring are in the `Document/` directory.
+
+---
+
+## Quick Start
+
+### Dependencies (Arch Linux example)
+
+```bash
+sudo pacman -S --needed arm-none-eabi-gcc arm-none-eabi-binutils \
+  arm-none-eabi-newlib openocd stlink minicom
+```
+
+### Build
+
+```bash
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc-toolchain.cmake
+cmake --build build
+```
+
+Output artifacts: `build/stm32f103_baremetal.{elf,hex,bin}`
+
+Optional CMake options: `DEBUG_LOG`, `ASSERT_LEVEL`, `OLED_REFRESH_MODE` (see `CMakeLists.txt`).
+
+### Flashing & Serial Console
+
+```bash
+./burning.sh --flash-only              # Build and flash
+./burning.sh -m -d /dev/ttyUSB0        # Flash then open minicom
+./burning.sh --minicom-only -d /dev/ttyUSB0 -b 115200
+```
+
+Or via CMake: `cmake --build build --target flash` (requires OpenOCD + ST-Link).
+
+After power-on, the serial console prints `board console ready`; enter a line of text and press Enter to display it on the corresponding OLED line.
+
+---
+
+## Boot Flow
+
+```
+main
+ ├─ bsp_clock_apply_profile(HSE_PLL_72MHZ)
+ ├─ bsp_board_init()              // Peripheral clock gating
+ ├─ bsp_dc_motor_gpio_safe_early() // Motor safe state
+ ├─ app_init()
+ │    ├─ systick_init_1ms()
+ │    └─ bsp_default_devices_init()
+ └─ app_run_forever()             // Cooperative tasks + serial line handling
+```
+
+Interrupts: `SysTick_Handler` → millisecond tick; `USART1_IRQHandler` → RX ring buffer.
+
+---
+
+## Directory Layout
+
+```
+├── src/
+│   ├── main.c              Entry point and interrupt forwarding
+│   ├── app/                Application tasks
+│   ├── bsp/                Board init, clock, board_devices
+│   ├── drivers/            Peripheral drivers
+│   ├── hal/                I2C1 master
+│   └── common/             Status codes, buffers, logging
+├── include/                Layered headers mirroring src/
+├── startup/                Startup assembly and vector table
+├── linker/                 Linker script (64K/20K)
+├── cmake/                  Toolchain and source file manifest
+├── docs/                   All project documentation (see INDEX.md)
+├── Document/               Pin diagrams, datasheets, etc.
+├── burning.sh              Flash and serial console script
+└── CMakeLists.txt
+```
+
+To add or remove source files, edit `cmake/stm32_sources.cmake`.
+
+---
+
+## Documentation
+
+| Document | Description |
+|------|------|
+| [docs/INDEX.md](docs/INDEX.md) | **Master index** |
+| [docs/CODING_STYLE.md](docs/CODING_STYLE.md) | Coding and layering conventions |
+| [docs/DRIVER_API_GUIDE.md](docs/DRIVER_API_GUIDE.md) | Driver interface conventions |
+| [docs/bsp/](docs/bsp/README.md) | Board-level logical devices and configuration |
+| [docs/drivers/](docs/drivers/README.md) | Per-driver API reference |
+| [docs/hal/](docs/hal/README.md) | HAL layer (I2C) |
+| [docs/topics/](docs/topics/README.md) | Register-level topic guides (clock, PWM, ADC…) |
+
+---
+
+## Quality & Maintenance
+
+```bash
+cmake --build build --target format   # clang-format (if installed)
+cmake --build build --target lint     # cppcheck (if installed)
+```
+
+Firmware size reference (Debug build): run `cmake --build build` and check the `arm-none-eabi-size` output.
+
+---
+
+## License
+
+See [LICENSE](LICENSE). Third-party datasheets are in `Document/`.

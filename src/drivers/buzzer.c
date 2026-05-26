@@ -5,6 +5,7 @@
 #include "drivers/buzzer.h"
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/stm32f103_regs.h"
 #include "drivers/systick.h"
 
@@ -21,9 +22,9 @@ static void buzzer_apply_level(uint8_t on) {
   }
 
   if (level != 0U) {
-    GPIOA_BSRR = (1U << BOARD_BUZZER_PIN);
+    board_gpio_write(BOARD_GPIO_BUZZER_BSRR_REG, BOARD_GPIO_BUZZER_PIN, 1U);
   } else {
-    GPIOA_BSRR = (1U << (BOARD_BUZZER_PIN + 16U));
+    board_gpio_write(BOARD_GPIO_BUZZER_BSRR_REG, BOARD_GPIO_BUZZER_PIN, 0U);
   }
 }
 
@@ -34,7 +35,8 @@ stm_status_t buzzer_init_with_config(const buzzer_config_t *config) {
 
   s_active_high = (config->active_high != 0U) ? 1U : 0U;
 
-  GPIOA_CRL = (GPIOA_CRL & ~BOARD_GPIO_PA4_CRL_MASK) | BOARD_GPIO_PA4_OUT_PP_50MHZ;
+  board_gpio_apply_crl(BOARD_GPIO_BUZZER_CR_REG, BOARD_GPIO_BUZZER_CR_MASK,
+                       BOARD_GPIO_BUZZER_MODE_OUT);
   buzzer_apply_level(0U);
   s_initialized = 1U;
   return STM_OK;

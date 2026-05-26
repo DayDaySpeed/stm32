@@ -69,6 +69,8 @@
 #define AFIO_BASE           (0x40010000UL) /* AFIO 基地址 */
 #define AFIO_MAPR           (*(volatile uint32_t *)(AFIO_BASE + 0x04UL)) /* AF 重映射寄存器 */
 #define AFIO_MAPR_I2C1_REMAP_BIT (1U << 1) /* 1: I2C1_SCL=PB8, I2C1_SDA=PB9 */
+#define AFIO_MAPR_TIM2_REMAP_MASK (3U << 8U)  /* TIM2 部分/完全重映射 [9:8] */
+#define AFIO_MAPR_TIM3_REMAP_MASK (3U << 10U) /* TIM3 部分/完全重映射 [11:10] */
 
 /* GPIOA（通用输入输出端口 A，General Purpose Input/Output Port A）：配置 A 口引脚模式并进行输入输出控制 */
 #define GPIOA_BASE          (0x40010800UL) /* GPIOA 基地址 */
@@ -88,8 +90,10 @@
 
 /* GPIOC（通用输入输出端口 C，General Purpose Input/Output Port C）：配置 C 口引脚模式并进行输入输出控制 */
 #define GPIOC_BASE          (0x40011000UL) /* GPIOC 基地址 */
+#define GPIOC_CRL           (*(volatile uint32_t *)(GPIOC_BASE + 0x00UL)) /* GPIOC 配置低寄存器（PC0~PC7） */
 #define GPIOC_CRH           (*(volatile uint32_t *)(GPIOC_BASE + 0x04UL)) /* GPIOC 配置高寄存器（PC8~PC15） */
 #define GPIOC_ODR           (*(volatile uint32_t *)(GPIOC_BASE + 0x0CUL)) /* GPIOC 输出数据寄存器 */
+#define GPIOC_BSRR          (*(volatile uint32_t *)(GPIOC_BASE + 0x10UL)) /* GPIOC 置位/复位寄存器 */
 
 /* USART1（通用同步异步收发器1，Universal Synchronous/Asynchronous Receiver/Transmitter 1）：负责串口发送、接收与中断控制 */
 #define USART1_BASE         (0x40013800UL) /* USART1 基地址 */

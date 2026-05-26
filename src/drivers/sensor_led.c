@@ -5,6 +5,7 @@
 #include "drivers/sensor_led.h"
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
 #include "common/tim_timebase.h"
@@ -17,8 +18,9 @@ static uint32_t g_ticks_per_period;
 
 
 static void sensor_led_gpio_init(void) {
-  GPIOA_CRH = (GPIOA_CRH & ~(BOARD_GPIO_PA8_CRH_MASK | BOARD_GPIO_PA11_CRH_MASK)) |
-              BOARD_GPIO_PA8_AF_PP_50MHZ | BOARD_GPIO_PA11_AF_PP_50MHZ;
+  board_gpio_apply_crh(BOARD_GPIO_SENSOR_LED_CR_REG,
+                       BOARD_GPIO_SENSOR_LED_CR_MASK,
+                       BOARD_GPIO_SENSOR_LED_MODE_AF);
 }
 
 static void sensor_led_apply_hw(uint16_t psc, uint16_t arr, uint16_t ldr_permille,

@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/stm32f103_regs.h"
 
 /*
@@ -11,12 +12,19 @@
  */
 #define I2C1_MASTER_DEFAULT_TIMEOUT_ITER (3000UL)
 
-#define I2C1_SCL_PIN (8U)
-#define I2C1_SDA_PIN (9U)
-/* PB8/PB9 作 GPIO 开漏输出 50MHz（CNF=01 MODE=11 -> 0x7/引脚） */
-#define I2C1_GPIO_PB8_PB9_OD_OUT_50MHZ (0x00000077UL)
+#define I2C1_SCL_PIN BOARD_GPIO_I2C1_SCL_PIN
+#define I2C1_SDA_PIN BOARD_GPIO_I2C1_SDA_PIN
 
 static uint32_t g_timeout_iter = I2C1_MASTER_DEFAULT_TIMEOUT_ITER;
+
+static void i2c1_gpio_apply_mode(uint32_t mode) {
+  board_gpio_apply_crl(BOARD_GPIO_I2C1_CR_REG, BOARD_GPIO_I2C1_CR_MASK, mode);
+}
+
+static void i2c1_gpio_set_lines(uint8_t scl_high, uint8_t sda_high) {
+  board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SCL_PIN, scl_high);
+  board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SDA_PIN, sda_high);
+}
 
 static void i2c1_delay_short(void) {
   for (volatile uint32_t d = 0U; d < 64U; ++d) {
@@ -29,28 +37,25 @@ static void i2c1_delay_short(void) {
 void i2c1_master_bus_recover(void) {
   I2C1_CR1 &= (uint32_t)~I2C_CR1_PE_BIT;
 
-  GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
-              I2C1_GPIO_PB8_PB9_OD_OUT_50MHZ;
-  GPIOB_BSRR = (1U << I2C1_SCL_PIN) | (1U << I2C1_SDA_PIN);
+  i2c1_gpio_apply_mode(BOARD_GPIO_I2C1_MODE_GPIO_OD);
+  i2c1_gpio_set_lines(1U, 1U);
   i2c1_delay_short();
 
   for (uint8_t pulse = 0U; pulse < 9U; pulse++) {
-    GPIOB_BSRR = (1U << (I2C1_SCL_PIN + 16U));
+    board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SCL_PIN, 0U);
     i2c1_delay_short();
-    GPIOB_BSRR = (1U << I2C1_SCL_PIN);
+    board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SCL_PIN, 1U);
     i2c1_delay_short();
   }
 
-  /* 从机仍拉低 SDA 时补发 STOP：SCL=1 时 SDA 低→高。 */
-  GPIOB_BSRR = (1U << I2C1_SCL_PIN);
+  board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SCL_PIN, 1U);
   i2c1_delay_short();
-  GPIOB_BSRR = (1U << (I2C1_SDA_PIN + 16U));
+  board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SDA_PIN, 0U);
   i2c1_delay_short();
-  GPIOB_BSRR = (1U << I2C1_SDA_PIN);
+  board_gpio_write(BOARD_GPIO_I2C1_BSRR_REG, I2C1_SDA_PIN, 1U);
   i2c1_delay_short();
 
-  GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
-              BOARD_GPIO_PB8_PB9_AF_OD_50MHZ;
+  i2c1_gpio_apply_mode(BOARD_GPIO_I2C1_MODE_AF_OD);
   I2C1_CR1 |= I2C_CR1_PE_BIT;
 }
 
@@ -171,9 +176,8 @@ stm_status_t i2c1_master_init(const i2c1_master_config_t *cfg) {
   /* ---------- [6] GPIO 配置 ----------
    * I2C1 默认引脚是 PB6(SCL)/PB7(SDA)，重映射后挪到 PB8(SCL)/PB9(SDA)，
    * 本板用的是重映射版本。复用开漏（AF_OD）+ 外部上拉电阻是 I2C 标准接法。 */
-  AFIO_MAPR |= AFIO_MAPR_I2C1_REMAP_BIT;
-  GPIOB_CRH = (GPIOB_CRH & ~BOARD_GPIO_PB8_PB9_CRH_MASK) |
-              BOARD_GPIO_PB8_PB9_AF_OD_50MHZ;
+  board_gpio_afio_apply(AFIO_MAPR_I2C1_REMAP_BIT, BOARD_AFIO_I2C1_REMAP);
+  i2c1_gpio_apply_mode(BOARD_GPIO_I2C1_MODE_AF_OD);
 
   /* ---------- [7] 写时序寄存器并启动 ----------
    * 顺序关键：

@@ -5,6 +5,7 @@
 #include "drivers/dc_motor.h"
 
 #include "bsp/board_pins.h"
+#include "bsp/board_gpio.h"
 #include "bsp/clock.h"
 #include "bsp/stm32f103_regs.h"
 #include "common/tim_timebase.h"
@@ -27,34 +28,25 @@ static stm_status_t dc_motor_validate_speed(int16_t speed_permille) {
 
 
 static void dc_motor_set_ain1(uint8_t level) {
-  if (level != 0U) {
-    GPIOB_BSRR = (1U << BOARD_TB6612_AIN1_PIN);
-  } else {
-    GPIOB_BSRR = (1U << (BOARD_TB6612_AIN1_PIN + 16U));
-  }
+  board_gpio_write(BOARD_GPIO_MOTOR_BSRR_REG, BOARD_GPIO_MOTOR_AIN1_PIN, level);
 }
 
 static void dc_motor_set_ain2(uint8_t level) {
-  if (level != 0U) {
-    GPIOB_BSRR = (1U << BOARD_TB6612_AIN2_PIN);
-  } else {
-    GPIOB_BSRR = (1U << (BOARD_TB6612_AIN2_PIN + 16U));
-  }
+  board_gpio_write(BOARD_GPIO_MOTOR_BSRR_REG, BOARD_GPIO_MOTOR_AIN2_PIN, level);
 }
 
 void dc_motor_gpio_safe_early(void) {
-  RCC_APB2ENR |= RCC_IOPBEN_BIT;
-  GPIOB_CRL = (GPIOB_CRL & ~BOARD_TB6612_PWM_GPIO_MASK) |
-              BOARD_GPIO_PB6_OUT_PP_50MHZ | BOARD_GPIO_PB5_OUT_PP_50MHZ |
-              BOARD_GPIO_PB7_OUT_PP_50MHZ;
-  GPIOB_BSRR = (1U << (6U + 16U)) | (1U << (BOARD_TB6612_AIN1_PIN + 16U)) |
-               (1U << (BOARD_TB6612_AIN2_PIN + 16U));
+  board_gpio_enable_port_b_clock();
+  board_gpio_apply_crl(GPIOB_CRL, BOARD_GPIO_MOTOR_GPIO_MASK,
+                       BOARD_GPIO_MOTOR_MODE_SAFE);
+  board_gpio_write(BOARD_GPIO_MOTOR_BSRR_REG, BOARD_GPIO_MOTOR_PWM_PIN, 0U);
+  board_gpio_write(BOARD_GPIO_MOTOR_BSRR_REG, BOARD_GPIO_MOTOR_AIN1_PIN, 0U);
+  board_gpio_write(BOARD_GPIO_MOTOR_BSRR_REG, BOARD_GPIO_MOTOR_AIN2_PIN, 0U);
 }
 
 static void dc_motor_gpio_init(void) {
-  GPIOB_CRL = (GPIOB_CRL & ~BOARD_TB6612_PWM_GPIO_MASK) |
-              BOARD_GPIO_PB6_AF_PP_50MHZ | BOARD_GPIO_PB5_OUT_PP_50MHZ |
-              BOARD_GPIO_PB7_OUT_PP_50MHZ;
+  board_gpio_apply_crl(GPIOB_CRL, BOARD_GPIO_MOTOR_GPIO_MASK,
+                       BOARD_GPIO_MOTOR_MODE_INIT);
   dc_motor_set_ain1(0U);
   dc_motor_set_ain2(0U);
 }
