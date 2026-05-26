@@ -1,3 +1,6 @@
+/*
+ * 状态码枚举 → 可读字符串，供日志与故障打印使用。
+ */
 #include "common/stm_status.h"
 
 const char *stm_status_name(stm_status_t status) {

@@ -1,3 +1,6 @@
+/*
+ * 轻量日志：通过注册的 writer（通常为串口）输出诊断文本。
+ */
 #include "common/stm_log.h"
 
 #include <stddef.h>

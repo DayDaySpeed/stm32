@@ -1,3 +1,7 @@
+/*
+ * 单生产者单消费者字节环形缓冲，供 USART1 中断接收使用。
+ * push 满返回 OVERFLOW；pop 空返回 BUSY。
+ */
 #include "common/ring_buffer.h"
 
 #include <stddef.h>
@@ -46,14 +50,4 @@ stm_status_t ring_buffer_pop_byte(ring_buffer_t *rb, uint8_t *out) {
   *out = rb->data[rb->tail];
   rb->tail = ring_buffer_next(rb, rb->tail);
   return STM_OK;
-}
-
-uint16_t ring_buffer_count(const ring_buffer_t *rb) {
-  if (rb == NULL) {
-    return 0U;
-  }
-  if (rb->head >= rb->tail) {
-    return (uint16_t)(rb->head - rb->tail);
-  }
-  return (uint16_t)(rb->capacity - (rb->tail - rb->head));
 }

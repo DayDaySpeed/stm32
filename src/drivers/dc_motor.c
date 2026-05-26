@@ -13,7 +13,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DC_MOTOR_PWM_HZ_DEFAULT     (10000UL)
 #define DC_MOTOR_SPEED_MAX          (1000)
 
 static uint32_t g_ticks_per_period;
@@ -132,14 +131,6 @@ stm_status_t dc_motor_init_with_config(const dc_motor_config_t *config) {
   return STM_OK;
 }
 
-stm_status_t dc_motor_init(void) {
-  const dc_motor_config_t config = {
-      .pwm_hz = DC_MOTOR_PWM_HZ_DEFAULT,
-      .speed_permille = 0,
-  };
-  return dc_motor_init_with_config(&config);
-}
-
 stm_status_t dc_motor_set_speed_signed(int16_t speed_permille) {
   stm_status_t st = dc_motor_validate_speed(speed_permille);
   if (st != STM_OK) {
@@ -164,13 +155,6 @@ stm_status_t dc_motor_get_speed_signed(int16_t *out_speed_permille) {
 
   *out_speed_permille = g_speed_permille;
   return STM_OK;
-}
-
-stm_status_t dc_motor_set_duty_permille(uint16_t duty_permille) {
-  if (duty_permille > DC_MOTOR_SPEED_MAX) {
-    return STM_ERR_INVALID_ARG;
-  }
-  return dc_motor_set_speed_signed((int16_t)duty_permille);
 }
 
 stm_status_t dc_motor_stop(void) { return dc_motor_set_speed_signed(0); }

@@ -3,15 +3,15 @@
 
 #include "common/stm_status.h"
 
+/*
+ * 可注入的轻量日志：默认 writer 由 bsp_console_init 注册为串口 blocking 写。
+ * STM_DEBUG_LOG=0 时 STM_LOG_* 宏编译为空操作。
+ */
+
 typedef stm_status_t (*stm_log_write_fn)(const char *text);
 
-/* 注册一条轻量日志输出路径（例如串口控制台）。传 NULL 可关闭日志。 */
 void stm_log_set_writer(stm_log_write_fn writer);
-
-/* 原样输出字符串；若未注册 writer，则返回 NOT_INITIALIZED。 */
 stm_status_t stm_log_write(const char *text);
-
-/* 输出 "module: status\\r\\n" 这种简短诊断信息。 */
 stm_status_t stm_log_write_status(const char *module, stm_status_t status);
 
 #if STM_DEBUG_LOG

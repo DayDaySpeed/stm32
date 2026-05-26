@@ -1,3 +1,7 @@
+/*
+ * 板级逻辑设备实现：把具体驱动实例绑定为本板默认配置。
+ * app 只调用 bsp_*，不感知 USART1/TIM2/ADC1 等底层名称。
+ */
 #include "bsp/board_devices.h"
 
 #include <stdarg.h>
@@ -6,7 +10,6 @@
 #include "drivers/adc1_dual_scan_dma.h"
 #include "drivers/dc_motor.h"
 #include "drivers/encoder.h"
-#include "drivers/photoresistor.h"
 #include "bsp/board_config.h"
 #include "drivers/buzzer.h"
 #include "drivers/sensor_led.h"
@@ -17,10 +20,12 @@
 #include "hal/i2c1_master.h"
 #include "drivers/usart1.h"
 
+/* ---------- 本板默认参数（换波特率/PWM 频率时改这里） ---------- */
 #define BOARD_CONSOLE_BAUDRATE 115200UL
 #define BOARD_STATUS_LED_PWM_HZ 1000UL
 #define BOARD_DC_MOTOR_PWM_HZ   10000UL
 
+/* ---------- 各逻辑设备静态 config（传给 *_init_with_config） ---------- */
 static const usart1_config_t g_board_console_config = {
     .baudrate = BOARD_CONSOLE_BAUDRATE,
     .oversampling = USART_OVERSAMPLING_16,
@@ -47,11 +52,6 @@ static const adc1_dual_config_t g_board_adc_dual_config = {
     .adc_prescaler = ADC1_DUAL_PRESCALER_AUTO,
 };
 
-static const photoresistor_config_t g_board_ambient_light_config = {
-    .clock_source = PHOTO_ADC_CLOCK_SOURCE_PCLK2,
-    .adc_prescaler = PHOTO_ADC_PRESCALER_AUTO,
-};
-
 static const thermistor_config_t g_board_temperature_config = {
     .clock_source = THERMISTOR_ADC_CLOCK_SOURCE_PCLK2,
     .adc_prescaler = THERMISTOR_ADC_PRESCALER_AUTO,
@@ -73,6 +73,7 @@ static const sensor_led_config_t g_board_sensor_led_config = {
     .pwm_hz = BOARD_SENSOR_LED_PWM_HZ,
 };
 
+/* ---------- 控制台（USART1） ---------- */
 stm_status_t bsp_console_init(void) {
   stm_status_t st = usart1_init_with_config(&g_board_console_config);
   if (st != STM_OK) {
@@ -96,6 +97,7 @@ stm_status_t bsp_console_read_line_try(char *out, uint16_t out_size) {
 
 void bsp_console_irq_handler(void) { usart1_irq_handler(); }
 
+/* ---------- OLED 显示（SSD1306 + I2C1） ---------- */
 stm_status_t bsp_display_init(void) { return ssd1306_default_init(); }
 
 stm_status_t bsp_display_recover(void) {
@@ -116,6 +118,7 @@ stm_status_t bsp_display_write_text_atf(uint16_t page, uint16_t col_px,
   return st;
 }
 
+/* ---------- 状态呼吸灯（TIM2） ---------- */
 stm_status_t bsp_status_led_init(void) {
   return breathing_led_init_with_config(&g_board_breathing_led_config);
 }
@@ -124,6 +127,7 @@ stm_status_t bsp_status_led_set_duty_permille(uint16_t duty_permille) {
   return breathing_led_set_duty_permille(duty_permille);
 }
 
+/* ---------- 旋钮编码器（TIM3） ---------- */
 stm_status_t bsp_wheel_encoder_init(void) {
   return tim3_encoder_init_with_config(&g_board_wheel_encoder_config);
 }
@@ -132,10 +136,7 @@ stm_status_t bsp_wheel_encoder_read_count(int16_t *out_count) {
   return tim3_encoder_read_count(out_count);
 }
 
-stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction) {
-  return tim3_encoder_read_direction(out_direction);
-}
-
+/* ---------- 直流电机（TB6612 + TIM4） ---------- */
 void bsp_dc_motor_gpio_safe_early(void) { dc_motor_gpio_safe_early(); }
 
 stm_status_t bsp_dc_motor_init(void) {
@@ -160,31 +161,11 @@ stm_status_t bsp_dc_motor_get_speed_signed(int16_t *out_speed_permille) {
   return STM_OK;
 }
 
-stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille) {
-  return bsp_dc_motor_set_speed_signed((int16_t)duty_permille);
-}
-
-stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille) {
-  int16_t speed = 0;
-  stm_status_t st = bsp_dc_motor_get_speed_signed(&speed);
-  if (st != STM_OK) {
-    return st;
-  }
-  if (speed < 0) {
-    return STM_ERR_INVALID_ARG;
-  }
-  *out_duty_permille = (uint16_t)speed;
-  return STM_OK;
-}
-
 stm_status_t bsp_dc_motor_stop(void) { return dc_motor_stop(); }
 
+/* ---------- 模拟传感器（ADC1 三路 + 温度/红外换算） ---------- */
 stm_status_t bsp_analog_sensors_init(void) {
   stm_status_t st = adc1_dual_init_with_config(&g_board_adc_dual_config);
-  if (st != STM_OK) {
-    return st;
-  }
-  st = photoresistor_init_with_config(&g_board_ambient_light_config);
   if (st != STM_OK) {
     return st;
   }
@@ -200,6 +181,7 @@ stm_status_t bsp_ir_reflect_read_raw_average(uint16_t *out_raw12,
   return ir_reflect_read_raw_average_blocking(out_raw12, sample_count);
 }
 
+/* ---------- 蜂鸣器 / 传感器指示 LED ---------- */
 stm_status_t bsp_buzzer_init(void) {
   return buzzer_init_with_config(&g_board_buzzer_config);
 }
@@ -250,15 +232,6 @@ stm_status_t bsp_sensor_led_update_from_sensors(void) {
   return sensor_led_set_ntc_permille(ntc_permille);
 }
 
-stm_status_t bsp_ambient_light_init(void) {
-  return photoresistor_init_with_config(&g_board_ambient_light_config);
-}
-
-stm_status_t bsp_ambient_light_read_raw_average(uint16_t *out_raw12,
-                                                uint8_t sample_count) {
-  return photoresistor_read_raw_average_blocking(out_raw12, sample_count);
-}
-
 stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
                                                   uint16_t *out_therm_raw12,
                                                   uint8_t scan_count) {
@@ -290,6 +263,7 @@ stm_status_t bsp_temperature_read_celsius_x10_from_raw(uint16_t therm_raw12,
                                                        out_celsius_x10);
 }
 
+/* ---------- 上电默认设备一键初始化（main → app_init 调用） ---------- */
 stm_status_t bsp_default_devices_init(void) {
   stm_status_t st = bsp_dc_motor_init();
   if (st != STM_OK) {

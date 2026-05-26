@@ -1,3 +1,7 @@
+/*
+ * I2C1 主机 HAL：标准模式轮询收发 + 总线恢复。
+ * 引脚由 board_pins.h 决定（默认 PB8/PB9 重映射）。
+ */
 #include "hal/i2c1_master.h"
 
 #include <stddef.h>

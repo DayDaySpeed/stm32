@@ -1,3 +1,12 @@
+/*
+ * 固件入口：配置时钟 → 板级初始化 → 应用主循环。
+ *
+ * 中断向量：
+ *   SysTick_Handler  — 1ms 系统节拍（systick）
+ *   USART1_IRQHandler — 串口接收字节入环形缓冲
+ *
+ * 上电顺序不可随意调换：电机 GPIO 须在 app_init 之前拉安全态。
+ */
 #include "app/app.h"
 #include "bsp/board_init.h"
 #include "bsp/board_devices.h"

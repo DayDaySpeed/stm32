@@ -1,7 +1,6 @@
 /*
- * 状态灯呼吸驱动 —— TIM2_CH1 / PA0 边沿对齐 PWM（模式 1）
- *
- * CNT < CCR1 输出高；占空比由 CCR1 决定。运行时仅改 CCR1 即可平滑调亮度。
+ * 状态呼吸灯 —— TIM2 CH1 边沿对齐 PWM。
+ * 引脚由 board_pin_mux.h / board_pins.h 解析；占空比运行时改 CCR1 即可。
  */
 
 #include "drivers/breathing_led.h"
@@ -75,14 +74,6 @@ static void breathing_led_apply_hw(uint16_t psc, uint16_t arr,
   g_ticks_per_period = ticks;
 }
 
-stm_status_t breathing_led_init_hz(uint32_t carrier_hz, uint16_t duty_permille) {
-  const breathing_led_config_t config = {
-      .carrier_hz = carrier_hz,
-      .duty_permille = duty_permille,
-  };
-  return breathing_led_init_with_config(&config);
-}
-
 stm_status_t breathing_led_init_with_config(const breathing_led_config_t *config) {
   stm_status_t st = breathing_led_validate_config(config);
   if (st != STM_OK) {
@@ -103,28 +94,6 @@ stm_status_t breathing_led_init_with_config(const breathing_led_config_t *config
   return STM_OK;
 }
 
-stm_status_t breathing_led_set_config(const breathing_led_config_t *config) {
-  stm_status_t st = breathing_led_validate_config(config);
-  if (st != STM_OK) {
-    return st;
-  }
-  if (g_ticks_per_period == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-
-  uint32_t tim_clk = bsp_clock_get_apb1_timer_hz();
-  uint16_t psc = 0U;
-  uint16_t arr = 0U;
-
-  st = stm_tim_resolve_timebase(tim_clk, config->carrier_hz, &psc, &arr);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  breathing_led_apply_hw(psc, arr, config->duty_permille);
-  return STM_OK;
-}
-
 stm_status_t breathing_led_set_duty_permille(uint16_t duty_permille) {
   stm_status_t st = breathing_led_validate_duty(duty_permille);
   if (st != STM_OK) {
@@ -135,23 +104,5 @@ stm_status_t breathing_led_set_duty_permille(uint16_t duty_permille) {
   }
 
   TIM2_CCR1 = stm_tim_duty_permille_to_ccr(duty_permille, g_ticks_per_period);
-  return STM_OK;
-}
-
-stm_status_t breathing_led_set_hz(uint32_t carrier_hz, uint16_t duty_permille) {
-  const breathing_led_config_t config = {
-      .carrier_hz = carrier_hz,
-      .duty_permille = duty_permille,
-  };
-  return breathing_led_set_config(&config);
-}
-
-stm_status_t breathing_led_stop(void) {
-  if (g_ticks_per_period == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-  TIM2_CR1 &= ~TIM_CR1_CEN_BIT;
-  TIM2_CCER &= ~TIM_CCER_CC1E_BIT;
-  g_ticks_per_period = 0U;
   return STM_OK;
 }

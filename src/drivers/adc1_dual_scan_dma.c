@@ -232,8 +232,6 @@ static stm_status_t adc1_dual_start_scan_dma_blocking(uint16_t *buffer,
   return st;
 }
 
-uint8_t adc1_dual_is_initialized(void) { return s_initialized; }
-
 stm_status_t adc1_dual_init_with_config(const adc1_dual_config_t *config) {
   stm_status_t st = adc1_dual_validate_config(config);
   if (st != STM_OK) {
@@ -277,25 +275,6 @@ stm_status_t adc1_dual_init_with_config(const adc1_dual_config_t *config) {
   return STM_OK;
 }
 
-stm_status_t adc1_dual_init(void) {
-  const adc1_dual_config_t config = {
-      .clock_source = ADC1_DUAL_CLOCK_SOURCE_PCLK2,
-      .adc_prescaler = ADC1_DUAL_PRESCALER_AUTO,
-  };
-  return adc1_dual_init_with_config(&config);
-}
-
-stm_status_t adc1_dual_read_all_blocking(uint16_t out_samples[ADC1_DUAL_SLOT_COUNT]) {
-  if (out_samples == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-  if (s_initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-
-  return adc1_dual_start_scan_dma_blocking(out_samples, ADC1_DUAL_SLOT_COUNT);
-}
-
 stm_status_t adc1_dual_read_all_average_blocking(
     uint16_t out_samples[ADC1_DUAL_SLOT_COUNT], uint8_t scan_count) {
   uint32_t sum_photo = 0U;
@@ -326,24 +305,6 @@ stm_status_t adc1_dual_read_all_average_blocking(
       (uint16_t)(sum_therm / (uint32_t)scan_count);
   out_samples[ADC1_DUAL_SLOT_IR_REFLECT] =
       (uint16_t)(sum_ir / (uint32_t)scan_count);
-  return STM_OK;
-}
-
-stm_status_t adc1_dual_read_pair_blocking(uint16_t out_pair[2]) {
-  uint16_t sample[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
-  stm_status_t st = STM_OK;
-
-  if (out_pair == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-
-  st = adc1_dual_read_all_blocking(sample);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  out_pair[ADC1_DUAL_SLOT_PHOTO] = sample[ADC1_DUAL_SLOT_PHOTO];
-  out_pair[ADC1_DUAL_SLOT_THERM] = sample[ADC1_DUAL_SLOT_THERM];
   return STM_OK;
 }
 

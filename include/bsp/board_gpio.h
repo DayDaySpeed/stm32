@@ -24,13 +24,13 @@
   (((pin) < 8U) ? BOARD_GPIO_CRL_FIELD_MASK(pin)                               \
                 : BOARD_GPIO_CRH_FIELD_MASK(pin))
 
-#define BOARD_GPIO_MODE_ANALOG(pin)     (0x0U << BOARD_GPIO_FIELD_POS(pin))
-#define BOARD_GPIO_MODE_OUT_PP(pin)     (0x3U << BOARD_GPIO_FIELD_POS(pin))
-#define BOARD_GPIO_MODE_IN_FLOAT(pin)   (0x4U << BOARD_GPIO_FIELD_POS(pin))
-#define BOARD_GPIO_MODE_IN_PULL(pin)    (0x8U << BOARD_GPIO_FIELD_POS(pin))
-#define BOARD_GPIO_MODE_AF_PP(pin)      (0xBU << BOARD_GPIO_FIELD_POS(pin))
-#define BOARD_GPIO_MODE_AF_OD(pin)      (0xFU << BOARD_GPIO_FIELD_POS(pin))
-#define BOARD_GPIO_MODE_GPIO_OD(pin)    (0x7U << BOARD_GPIO_FIELD_POS(pin))
+#define BOARD_GPIO_MODE_ANALOG(pin)     (0x0U << BOARD_GPIO_FIELD_POS(pin)) /* 模拟输入 */
+#define BOARD_GPIO_MODE_OUT_PP(pin)     (0x3U << BOARD_GPIO_FIELD_POS(pin)) /* 推挽输出 50MHz */
+#define BOARD_GPIO_MODE_IN_FLOAT(pin)   (0x4U << BOARD_GPIO_FIELD_POS(pin)) /* 浮空输入 */
+#define BOARD_GPIO_MODE_IN_PULL(pin)    (0x8U << BOARD_GPIO_FIELD_POS(pin)) /* 输入上/下拉 */
+#define BOARD_GPIO_MODE_AF_PP(pin)      (0xBU << BOARD_GPIO_FIELD_POS(pin)) /* 复用推挽 */
+#define BOARD_GPIO_MODE_AF_OD(pin)      (0xFU << BOARD_GPIO_FIELD_POS(pin)) /* 复用开漏（I2C） */
+#define BOARD_GPIO_MODE_GPIO_OD(pin)    (0x7U << BOARD_GPIO_FIELD_POS(pin)) /* GPIO 开漏（总线恢复） */
 
 #define BOARD_GPIO_ODR_PULLUP(pin)      (1U << (pin))
 

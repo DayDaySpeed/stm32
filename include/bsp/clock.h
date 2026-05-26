@@ -5,25 +5,26 @@
 
 #include "common/stm_status.h"
 
+/*
+ * 系统时钟配置与运行时频率查询。
+ * 驱动算波特率/PWM/ADC 分频时统一用 getter，避免硬编码 72MHz。
+ */
+
 typedef enum {
-  BSP_CLOCK_PROFILE_HSI_8MHZ = 0,
-  BSP_CLOCK_PROFILE_HSE_PLL_72MHZ = 1
+  BSP_CLOCK_PROFILE_HSI_8MHZ = 0,       /* 内部 8MHz，调试用 */
+  BSP_CLOCK_PROFILE_HSE_PLL_72MHZ = 1   /* 外部 8MHz × PLL9 → 72MHz */
 } bsp_clock_profile_t;
 
-/* 配置系统时钟方案（当前支持 HSI 8MHz / HSE+PLL 72MHz）。 */
 stm_status_t bsp_clock_apply_profile(bsp_clock_profile_t profile);
 
-/* 运行时查询时钟频率，避免业务层依赖 RCC 细节。 */
-uint32_t bsp_clock_get_sysclk_hz(void);
 uint32_t bsp_clock_get_hclk_hz(void);
 uint32_t bsp_clock_get_pclk1_hz(void);
 uint32_t bsp_clock_get_pclk2_hz(void);
 
-/* APB 预分频 ≠ 1 时，挂在该总线上的定时器时钟自动 ×2（STM32F1 规则）。 */
+/* F1 规则：APB 预分频≠1 时，该总线上定时器时钟 = PCLK×2 */
 uint32_t bsp_clock_get_apb1_timer_hz(void);
 uint32_t bsp_clock_get_apb2_timer_hz(void);
 
-/* SysTick 1ms 中断的 RVR 重装载值：HCLK 计数到 0 时触发，故为 (HCLK/1000)-1。 */
 #define BSP_SYSTICK_RELOAD_1MS ((bsp_clock_get_hclk_hz() / 1000UL) - 1UL)
 
 #endif

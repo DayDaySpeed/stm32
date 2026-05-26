@@ -3,6 +3,11 @@
 
 #include "common/stm_status.h"
 
+/*
+ * 编译期断言宏：条件失败时调用 stm_fault_halt 停机。
+ * STM_ASSERT_LEVEL=0 可完全关闭（Release 可选）。
+ */
+
 __attribute__((noreturn)) void stm_fault_halt(const char *module,
                                               stm_status_t status);
 

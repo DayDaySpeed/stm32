@@ -1,3 +1,6 @@
+/*
+ * 不可恢复错误处理：记录模块名与状态码后死循环，便于调试器定位。
+ */
 #include "common/stm_fault.h"
 
 #include <stddef.h>
@@ -11,10 +14,6 @@ void stm_fault_record(const char *module, stm_status_t status) {
   g_fault_module = (module != NULL) ? module : "unknown";
   g_fault_status = status;
 }
-
-const char *stm_fault_last_module(void) { return g_fault_module; }
-
-stm_status_t stm_fault_last_status(void) { return g_fault_status; }
 
 __attribute__((noreturn)) void stm_fault_halt(const char *module,
                                               stm_status_t status) {

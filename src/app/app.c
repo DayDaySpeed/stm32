@@ -1,3 +1,7 @@
+/*
+ * 应用层：呼吸灯、编码器调速、OLED 调试、红外靠近蜂鸣等业务任务。
+ * 不直接操作寄存器，全部经 bsp/board_devices.h 逻辑设备 API。
+ */
 #include "app/app.h"
 
 #include <stdint.h>
@@ -229,6 +233,9 @@ static void app_motor_encoder_task(uint32_t now_ms) {
 /*
  * 光敏 + 热敏 + 反射红外（page 3..5，一次 SCAN+DMA 三路平均）：
  *   3 LDR   4 NTC   5 IR
+ */
+/*
+ * 模拟传感器 OLED 行（page 3..5）：LDR / NTC 温度 / IR 原始值与 mV。
  */
 static stm_status_t app_analog_sensors_oled_task(void) {
   uint16_t samples[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};

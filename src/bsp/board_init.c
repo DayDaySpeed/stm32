@@ -3,6 +3,10 @@
 #include "bsp/rcc_board.h"
 #include "bsp/stm32f103_regs.h"
 
+/*
+ * 打开本板用到的 AHB/APB1/APB2 外设时钟。
+ * 须在任意 USART/ADC/TIM/I2C 驱动 init 之前调用一次。
+ */
 void bsp_board_init(void) {
   /* AHB：DMA1（ADC1 双通道 SCAN 搬运）。 */
   RCC_AHBENR |= RCC_BOARD_AHB_ENABLE_MASK;

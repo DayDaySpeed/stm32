@@ -3,14 +3,13 @@
 
 #include "common/stm_status.h"
 
-/* 记录最后一次故障，供调试器或上层查询。 */
+/*
+ * 致命错误处理：记录模块名与状态码，可选串口打印后停机。
+ * 用于 main/app_init 等无法恢复的路径。
+ */
+
 void stm_fault_record(const char *module, stm_status_t status);
 
-/* 获取最后一次记录的故障信息。 */
-const char *stm_fault_last_module(void);
-stm_status_t stm_fault_last_status(void);
-
-/* 记录故障并停机。 */
 __attribute__((noreturn)) void stm_fault_halt(const char *module,
                                               stm_status_t status);
 

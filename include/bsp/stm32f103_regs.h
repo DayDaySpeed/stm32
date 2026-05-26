@@ -3,6 +3,13 @@
 
 #include <stdint.h>
 
+/*
+ * STM32F103C8 寄存器地址与位定义（裸机直访，无 CMSIS 依赖）。
+ *
+ * 命名：外设_REG 为 volatile 左值；*_BIT / *_MASK 为位域常量。
+ * GPIO CRL/CRH 每引脚 4 bit：低 2 位 MODE，高 2 位 CNF。
+ */
+
 /* RCC（复位与时钟控制，Reset and Clock Control）：负责时钟源选择、PLL 配置、总线分频与外设时钟门控 */
 #define RCC_BASE            (0x40021000UL) /* RCC 外设基地址 */
 #define RCC_CR              (*(volatile uint32_t *)(RCC_BASE + 0x00UL)) /* 时钟控制寄存器：HSI/HSE/PLL 开关与就绪位 */

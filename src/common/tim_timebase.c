@@ -1,3 +1,6 @@
+/*
+ * 通用定时器 PWM 时基求解：由 tim_clk 与目标 pwm_hz 反推 PSC/ARR。
+ */
 #include "common/tim_timebase.h"
 
 #include <stddef.h>

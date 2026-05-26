@@ -16,7 +16,6 @@ set(STM32_ELF_SOURCES
   src/drivers/encoder.c
   src/drivers/dc_motor.c
   src/drivers/adc1_dual_scan_dma.c
-  src/drivers/photoresistor.c
   src/drivers/thermistor.c
   src/drivers/ir_reflect.c
   src/drivers/buzzer.c

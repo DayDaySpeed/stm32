@@ -32,26 +32,18 @@ stm_status_t bsp_status_led_set_duty_permille(uint16_t duty_permille);
 
 stm_status_t bsp_wheel_encoder_init(void);
 stm_status_t bsp_wheel_encoder_read_count(int16_t *out_count);
-stm_status_t bsp_wheel_encoder_read_direction(uint8_t *out_direction);
 
 void bsp_dc_motor_gpio_safe_early(void);
 stm_status_t bsp_dc_motor_init(void);
 stm_status_t bsp_dc_motor_set_speed_signed(int16_t speed_permille);
 stm_status_t bsp_dc_motor_get_speed_signed(int16_t *out_speed_permille);
-stm_status_t bsp_dc_motor_set_speed_permille(uint16_t duty_permille);
-stm_status_t bsp_dc_motor_get_speed_permille(uint16_t *out_duty_permille);
 stm_status_t bsp_dc_motor_stop(void);
 
 /* 一次性初始化 ADC1 三路 SCAN+DMA 及光敏/热敏/红外逻辑驱动。 */
 stm_status_t bsp_analog_sensors_init(void);
 
-stm_status_t bsp_ambient_light_init(void);
-stm_status_t bsp_ambient_light_read_raw_average(uint16_t *out_raw12,
-                                                uint8_t sample_count);
-
 /*
  * 一次 ADC SCAN+DMA 同时得到光敏/热敏平均原始值（0~4095）。
- * out_photo_raw12、out_therm_raw12 均不可为 NULL；scan_count==0 非法。
  */
 stm_status_t bsp_analog_sensors_read_pair_average(uint16_t *out_photo_raw12,
                                                   uint16_t *out_therm_raw12,

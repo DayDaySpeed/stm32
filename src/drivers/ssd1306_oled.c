@@ -1,3 +1,7 @@
+/*
+ * SSD1306 128×64 OLED 驱动（I2C 0x3C）。
+ * 内部维护帧缓冲与 5×7 字体渲染；默认实例供 bsp_display_* 使用。
+ */
 #include "drivers/ssd1306_oled.h"
 
 #include <stdarg.h>
@@ -222,8 +226,6 @@ static uint32_t ssd1306_vformat(char *dst, uint32_t cap, const char *fmt,
   return idx;
 }
 
-ssd1306_t *ssd1306_default(void) { return &g_default_dev; }
-
 stm_status_t ssd1306_init(ssd1306_t *dev) {
   static const uint8_t init_cmds[] = {
       0xAEU, 0xD5U, 0x80U, 0xA8U, 0x3FU, 0xD3U, 0x00U, 0x40U, 0x8DU,
@@ -269,18 +271,6 @@ stm_status_t ssd1306_clear(ssd1306_t *dev) {
   dev->col_px = 0U;
   dev->row_page = 0U;
   return ssd1306_flush(dev);
-}
-
-stm_status_t ssd1306_cursor_home(ssd1306_t *dev) {
-  if (dev == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-  if (dev->initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-  dev->col_px = 0U;
-  dev->row_page = 0U;
-  return STM_OK;
 }
 
 stm_status_t ssd1306_putc(ssd1306_t *dev, uint8_t c) {
@@ -405,30 +395,6 @@ stm_status_t ssd1306_write_text_at(ssd1306_t *dev, uint16_t page,
   return ssd1306_write_text(dev, text);
 }
 
-stm_status_t ssd1306_write_text_atf(ssd1306_t *dev, uint16_t page,
-                                    uint16_t col_px, const char *fmt, ...) {
-  char text_buf[64];
-  uint32_t n = 0U;
-  va_list ap;
-
-  if ((dev == NULL) || (fmt == NULL)) {
-    return STM_ERR_INVALID_ARG;
-  }
-  if (dev->initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-
-  va_start(ap, fmt);
-  n = ssd1306_vformat(text_buf, sizeof(text_buf), fmt, ap);
-  va_end(ap);
-
-  if (n == 0U) {
-    return STM_ERR_IO;
-  }
-
-  return ssd1306_write_text_at(dev, page, col_px, text_buf);
-}
-
 stm_status_t ssd1306_vwrite_text_atf(ssd1306_t *dev, uint16_t page,
                                      uint16_t col_px, const char *fmt,
                                      va_list ap) {
@@ -455,62 +421,6 @@ stm_status_t ssd1306_default_vwrite_text_atf(uint16_t page, uint16_t col_px,
   return ssd1306_vwrite_text_atf(&g_default_dev, page, col_px, fmt, ap);
 }
 
-stm_status_t ssd1306_default_write_text_atf(uint16_t page, uint16_t col_px,
-                                            const char *fmt, ...) {
-  va_list ap;
-  stm_status_t st = STM_OK;
-
-  va_start(ap, fmt);
-  st = ssd1306_default_vwrite_text_atf(page, col_px, fmt, ap);
-  va_end(ap);
-  return st;
-}
-
 stm_status_t ssd1306_default_init(void) { return ssd1306_init(&g_default_dev); }
 
 stm_status_t ssd1306_default_clear(void) { return ssd1306_clear(&g_default_dev); }
-
-stm_status_t ssd1306_default_cursor_home(void) {
-  return ssd1306_cursor_home(&g_default_dev);
-}
-
-stm_status_t ssd1306_default_putc(uint8_t c) {
-  return ssd1306_putc(&g_default_dev, c);
-}
-
-stm_status_t ssd1306_default_refresh(void) { return ssd1306_flush(&g_default_dev); }
-
-stm_status_t ssd1306_default_write_text_at(uint16_t page, uint16_t col_px,
-                                           const char *text) {
-  return ssd1306_write_text_at(&g_default_dev, page, col_px, text);
-}
-
-void ssd1306_oled_init(void) { (void)ssd1306_default_init(); }
-
-void ssd1306_oled_clear(void) { (void)ssd1306_default_clear(); }
-
-void ssd1306_oled_cursor_home(void) {
-  (void)ssd1306_default_cursor_home();
-}
-
-void ssd1306_oled_putc(uint8_t c) { (void)ssd1306_default_putc(c); }
-
-void ssd1306_oled_refresh(void) { (void)ssd1306_default_refresh(); }
-
-void ssd1306_oled_write_text_at(uint8_t page, uint8_t col_px,
-                                const char *text) {
-  (void)ssd1306_default_write_text_at((uint16_t)page, (uint16_t)col_px, text);
-}
-
-void ssd1306_oled_write_text_atf(uint8_t page, uint8_t col_px, const char *fmt,
-                                 ...) {
-  va_list ap;
-
-  if (fmt == NULL) {
-    return;
-  }
-
-  va_start(ap, fmt);
-  (void)ssd1306_default_vwrite_text_atf((uint16_t)page, (uint16_t)col_px, fmt, ap);
-  va_end(ap);
-}

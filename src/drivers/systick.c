@@ -1,3 +1,7 @@
+/*
+ * SysTick 1ms 节拍：供 delay、任务周期调度、超时判断使用。
+ * 须在 bsp_clock_apply_profile() 之后调用 systick_init_1ms()。
+ */
 #include "drivers/systick.h"
 
 #include "bsp/clock.h"

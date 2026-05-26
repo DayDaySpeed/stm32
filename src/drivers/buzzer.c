@@ -42,11 +42,6 @@ stm_status_t buzzer_init_with_config(const buzzer_config_t *config) {
   return STM_OK;
 }
 
-stm_status_t buzzer_init(void) {
-  const buzzer_config_t config = {.active_high = 0U};
-  return buzzer_init_with_config(&config);
-}
-
 stm_status_t buzzer_on(void) {
   if (s_initialized == 0U) {
     return STM_ERR_NOT_INITIALIZED;

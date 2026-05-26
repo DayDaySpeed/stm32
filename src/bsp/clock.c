@@ -1,3 +1,6 @@
+/*
+ * 系统时钟树配置：HSI 8MHz 或 HSE+PLL 72MHz，并缓存 HCLK/PCLK 供驱动查询。
+ */
 #include "bsp/clock.h"
 
 #include "bsp/stm32f103_regs.h"
@@ -13,7 +16,6 @@
  * - 由 apply_* 在切换成功后更新；
  * - 所有驱动统一通过 getter 获取，避免硬编码。
  */
-static uint32_t g_sysclk_hz = 8000000UL;
 static uint32_t g_hclk_hz = 8000000UL;
 static uint32_t g_pclk1_hz = 8000000UL;
 static uint32_t g_pclk2_hz = 8000000UL;
@@ -57,7 +59,6 @@ static stm_status_t apply_hsi_8mhz(void) {
   RCC_CFGR |= (RCC_CFGR_HPRE_DIV1 | RCC_CFGR_PPRE1_DIV1 | RCC_CFGR_PPRE2_DIV1);
 
   /* 5) 更新软件频率缓存。 */
-  g_sysclk_hz = 8000000UL;
   g_hclk_hz = 8000000UL;
   g_pclk1_hz = 8000000UL;
   g_pclk2_hz = 8000000UL;
@@ -117,7 +118,6 @@ static stm_status_t apply_hse_pll_72mhz(void) {
   }
 
   /* 6) 更新软件频率缓存。 */
-  g_sysclk_hz = 72000000UL;
   g_hclk_hz = 72000000UL;
   g_pclk1_hz = 36000000UL;
   g_pclk2_hz = 72000000UL;
@@ -134,7 +134,6 @@ stm_status_t bsp_clock_apply_profile(bsp_clock_profile_t profile) {
   return STM_ERR_INVALID_ARG;
 }
 
-uint32_t bsp_clock_get_sysclk_hz(void) { return g_sysclk_hz; }
 uint32_t bsp_clock_get_hclk_hz(void) { return g_hclk_hz; }
 uint32_t bsp_clock_get_pclk1_hz(void) { return g_pclk1_hz; }
 uint32_t bsp_clock_get_pclk2_hz(void) { return g_pclk2_hz; }

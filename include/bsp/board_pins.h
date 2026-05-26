@@ -10,11 +10,6 @@
  * 驱动只 include 本头文件，不直接写 PA0/PB6 等物理引脚名。
  */
 
-/* ---------- AFIO 重映射（init 时 OR 入 AFIO_MAPR） ---------- */
-#define BOARD_AFIO_MAPR_OR_MASK                                                \
-  ((uint32_t)(BOARD_AFIO_STATUS_LED_REMAP | BOARD_AFIO_ENCODER_REMAP |         \
-              BOARD_AFIO_I2C1_REMAP))
-
 /* ---------- 状态呼吸灯 (TIM2 CH1) ---------- */
 #if (BOARD_STATUS_LED_PIN_MUX == BOARD_STATUS_LED_MUX_PA0_TIM2_CH1)
 #define BOARD_AFIO_STATUS_LED_REMAP      (0U)
@@ -253,12 +248,5 @@
 #else
 #error "Unsupported BOARD_I2C1_PIN_MUX"
 #endif
-
-/* ---------- 兼容旧宏（逐步废弃，文档仍引用） ---------- */
-#define BOARD_BUZZER_PIN                 BOARD_GPIO_BUZZER_PIN
-#define BOARD_TB6612_AIN1_PIN            BOARD_GPIO_MOTOR_AIN1_PIN
-#define BOARD_TB6612_AIN2_PIN            BOARD_GPIO_MOTOR_AIN2_PIN
-#define BOARD_TB6612_PWM_GPIO_MASK     BOARD_GPIO_MOTOR_GPIO_MASK
-#define BOARD_USART1_GPIO_CRH_REG        BOARD_GPIO_USART1_CR_REG
 
 #endif

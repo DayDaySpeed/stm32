@@ -85,11 +85,6 @@ stm_status_t tim3_encoder_init_with_config(const tim3_encoder_config_t *config) 
   return STM_OK;
 }
 
-stm_status_t tim3_encoder_init(tim3_encoder_dir_t direction) {
-  const tim3_encoder_config_t config = {.direction = direction};
-  return tim3_encoder_init_with_config(&config);
-}
-
 stm_status_t tim3_encoder_read_count(int16_t *out_count) {
   if (out_count == NULL) {
     return STM_ERR_INVALID_ARG;
@@ -99,33 +94,4 @@ stm_status_t tim3_encoder_read_count(int16_t *out_count) {
   }
   *out_count = (int16_t)(uint16_t)TIM3_CNT;
   return STM_OK;
-}
-
-int16_t tim3_encoder_get_count(void) {
-  /* 直接强转为 int16_t：让 0xFFFF 显示为 -1，0x8000 显示为 -32768，
-   * 这样 (now - prev) 在两端附近回绕时也能给出正确的「带符号增量」。 */
-  return (int16_t)(uint16_t)TIM3_CNT;
-}
-
-stm_status_t tim3_encoder_reset_count(void) {
-  if (g_tim3_encoder_initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-  TIM3_CNT = 0U;
-  return STM_OK;
-}
-
-stm_status_t tim3_encoder_read_direction(uint8_t *out_direction) {
-  if (out_direction == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-  if (g_tim3_encoder_initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-  *out_direction = ((TIM3_CR1 & TIM_CR1_DIR_BIT) != 0U) ? 1U : 0U;
-  return STM_OK;
-}
-
-uint8_t tim3_encoder_get_direction(void) {
-  return ((TIM3_CR1 & TIM_CR1_DIR_BIT) != 0U) ? 1U : 0U;
 }

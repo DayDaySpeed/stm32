@@ -1,20 +1,13 @@
 /*
- * 热敏电阻模块 —— 经 ADC1 双通道 SCAN+DMA 读取 IN2（PA2）
- *
- * ADC 硬件配置与 DMA 搬运见 drivers/adc1_dual_scan_dma.c。
- * 本文件负责 NTC 分压还原、电阻查表与温度换算。
+ * 热敏电阻模块 —— 温度换算（ADC 采样由 adc1_dual_scan_dma 负责）
  */
 
 #include "drivers/thermistor.h"
 
-#include "drivers/adc1_dual_scan_dma.h"
-
 #include <stddef.h>
 #include <stdint.h>
 
-#define THERMISTOR_VDDA_MV_DEFAULT      (3300U)
-#define THERMISTOR_FIXED_R_DEFAULT      (10000U)
-#define THERMISTOR_ADC_MAX              (4095U)
+#define THERMISTOR_ADC_MAX (4095U)
 
 typedef struct {
   int16_t temperature_celsius_x10;
@@ -34,13 +27,7 @@ static const thermistor_lut_entry_t g_ntc_10k_b3950_table[] = {
 };
 
 static uint8_t s_initialized;
-static thermistor_config_t s_config = {
-    .clock_source = THERMISTOR_ADC_CLOCK_SOURCE_PCLK2,
-    .adc_prescaler = THERMISTOR_ADC_PRESCALER_AUTO,
-    .divider_topology = THERMISTOR_DIVIDER_FIXED_UP_NTC_DOWN,
-    .fixed_resistor_ohms = THERMISTOR_FIXED_R_DEFAULT,
-    .vdda_mv = THERMISTOR_VDDA_MV_DEFAULT,
-};
+static thermistor_config_t s_config;
 
 static stm_status_t thermistor_validate_config(const thermistor_config_t *config) {
   if (config == NULL) {
@@ -70,24 +57,6 @@ static stm_status_t thermistor_validate_config(const thermistor_config_t *config
     return STM_ERR_INVALID_ARG;
   }
   return STM_OK;
-}
-
-static adc1_dual_config_t thermistor_to_adc_config(
-    const thermistor_config_t *config) {
-  adc1_dual_config_t out = {
-      .clock_source = ADC1_DUAL_CLOCK_SOURCE_PCLK2,
-      .adc_prescaler = ADC1_DUAL_PRESCALER_AUTO,
-  };
-
-  if (config != NULL) {
-    out.adc_prescaler = (adc1_dual_prescaler_t)config->adc_prescaler;
-  }
-  return out;
-}
-
-static uint32_t thermistor_raw_to_millivolts(uint16_t raw12) {
-  return ((uint32_t)raw12 * s_config.vdda_mv + (THERMISTOR_ADC_MAX / 2U)) /
-         THERMISTOR_ADC_MAX;
 }
 
 static stm_status_t thermistor_raw_to_resistance_ohms(uint16_t raw12,
@@ -161,107 +130,13 @@ static stm_status_t thermistor_lookup_temperature_celsius_x10(
 
 stm_status_t thermistor_init_with_config(const thermistor_config_t *config) {
   stm_status_t st = thermistor_validate_config(config);
-  adc1_dual_config_t adc_cfg;
-
   if (st != STM_OK) {
     return st;
   }
 
   s_config = *config;
-  adc_cfg = thermistor_to_adc_config(config);
-
-  st = adc1_dual_init_with_config(&adc_cfg);
-  if (st != STM_OK) {
-    return st;
-  }
-
   s_initialized = 1U;
   return STM_OK;
-}
-
-stm_status_t thermistor_init(void) {
-  const thermistor_config_t config = {
-      .clock_source = THERMISTOR_ADC_CLOCK_SOURCE_PCLK2,
-      .adc_prescaler = THERMISTOR_ADC_PRESCALER_AUTO,
-      .divider_topology = THERMISTOR_DIVIDER_FIXED_UP_NTC_DOWN,
-      .fixed_resistor_ohms = THERMISTOR_FIXED_R_DEFAULT,
-      .vdda_mv = THERMISTOR_VDDA_MV_DEFAULT,
-  };
-  return thermistor_init_with_config(&config);
-}
-
-stm_status_t thermistor_read_raw_blocking(uint16_t *out_raw12) {
-  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
-  stm_status_t st = STM_OK;
-
-  if (out_raw12 == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-  if (s_initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-
-  st = adc1_dual_read_pair_blocking(pair);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  *out_raw12 = pair[ADC1_DUAL_SLOT_THERM];
-  return STM_OK;
-}
-
-stm_status_t thermistor_read_raw_average_blocking(uint16_t *out_raw12,
-                                                  uint8_t sample_count) {
-  uint16_t pair[ADC1_DUAL_SLOT_COUNT] = {0U, 0U, 0U};
-  stm_status_t st = STM_OK;
-
-  if ((out_raw12 == NULL) || (sample_count == 0U)) {
-    return STM_ERR_INVALID_ARG;
-  }
-  if (s_initialized == 0U) {
-    return STM_ERR_NOT_INITIALIZED;
-  }
-
-  st = adc1_dual_read_pair_average_blocking(pair, sample_count);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  *out_raw12 = pair[ADC1_DUAL_SLOT_THERM];
-  return STM_OK;
-}
-
-stm_status_t thermistor_read_millivolts_blocking(uint32_t *out_mv) {
-  uint16_t raw = 0U;
-  stm_status_t st = STM_OK;
-
-  if (out_mv == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-
-  st = thermistor_read_raw_blocking(&raw);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  *out_mv = thermistor_raw_to_millivolts(raw);
-  return STM_OK;
-}
-
-stm_status_t thermistor_read_resistance_ohms_blocking(uint32_t *out_ohms) {
-  uint16_t raw = 0U;
-  stm_status_t st = STM_OK;
-
-  if (out_ohms == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-
-  st = thermistor_read_raw_blocking(&raw);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  return thermistor_raw_to_resistance_ohms(raw, out_ohms);
 }
 
 stm_status_t thermistor_read_temperature_from_raw_blocking(
@@ -283,42 +158,4 @@ stm_status_t thermistor_read_temperature_from_raw_blocking(
 
   return thermistor_lookup_temperature_celsius_x10(resistance_ohms,
                                                    out_celsius_x10);
-}
-
-stm_status_t thermistor_read_temperature_celsius_x10_blocking(
-    int16_t *out_celsius_x10) {
-  uint16_t raw = 0U;
-  stm_status_t st = STM_OK;
-
-  if (out_celsius_x10 == NULL) {
-    return STM_ERR_INVALID_ARG;
-  }
-
-  st = thermistor_read_raw_blocking(&raw);
-  if (st != STM_OK) {
-    return st;
-  }
-
-  return thermistor_read_temperature_from_raw_blocking(raw, out_celsius_x10);
-}
-
-stm_status_t thermistor_read_raw(uint16_t *out_raw12) {
-  return thermistor_read_raw_blocking(out_raw12);
-}
-
-stm_status_t thermistor_read_raw_average(uint16_t *out_raw12,
-                                         uint8_t sample_count) {
-  return thermistor_read_raw_average_blocking(out_raw12, sample_count);
-}
-
-stm_status_t thermistor_read_millivolts(uint32_t *out_mv) {
-  return thermistor_read_millivolts_blocking(out_mv);
-}
-
-stm_status_t thermistor_read_resistance_ohms(uint32_t *out_ohms) {
-  return thermistor_read_resistance_ohms_blocking(out_ohms);
-}
-
-stm_status_t thermistor_read_temperature_celsius_x10(int16_t *out_celsius_x10) {
-  return thermistor_read_temperature_celsius_x10_blocking(out_celsius_x10);
 }

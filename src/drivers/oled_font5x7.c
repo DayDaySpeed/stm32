@@ -1,3 +1,8 @@
+/*
+ * OLED 5×7 点阵字库（256 字符 × 5 字节/字）。
+ * 来源：Adafruit GFX classic font，公有领域。
+ * 由 ssd1306_oled.c 通过 extern 引用。
+ */
 #include <stdint.h>
 
 /* Adafruit GFX classic 5x7 font (256 glyphs × 5 bytes). Public domain / Adafruit. */

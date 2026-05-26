@@ -1,3 +1,7 @@
+/*
+ * USART1 控制台驱动：阻塞发送 + 中断接收环形缓冲 + 行解析。
+ * 引脚与波特率由 board_pins / board_devices 决定，本文件只负责外设寄存器配置。
+ */
 #include "drivers/usart1.h"
 
 #include <stddef.h>
@@ -156,16 +160,6 @@ stm_status_t usart1_init_with_config(const usart1_config_t *config) {
   return STM_OK;
 }
 
-stm_status_t usart1_init(uint32_t baudrate, usart_oversampling_t oversampling) {
-  const usart1_config_t config = {
-      .baudrate = baudrate,
-      .oversampling = oversampling,
-      .line_policy = USART1_LINE_CR_OR_LF,
-      .enable_rx_interrupt = 0U,
-  };
-  return usart1_init_with_config(&config);
-}
-
 /*
  * 开启 USART1 接收中断路径。
  *
@@ -223,20 +217,6 @@ stm_status_t usart1_read_byte_try(uint8_t *out) {
     return STM_ERR_NOT_INITIALIZED;
   }
   return ring_buffer_pop_byte(&g_usart1_rx_rb, out);
-}
-
-stm_status_t usart1_set_line_policy(usart1_line_policy_t policy) {
-  switch (policy) {
-  case USART1_LINE_CR_OR_LF:
-  case USART1_LINE_CR_ONLY:
-  case USART1_LINE_LF_ONLY:
-  case USART1_LINE_CRLF:
-    break;
-  default:
-    return STM_ERR_INVALID_ARG;
-  }
-  g_line_policy = policy;
-  return STM_OK;
 }
 
 stm_status_t usart1_read_line_try(char *out, uint16_t out_size) {
@@ -306,18 +286,4 @@ stm_status_t usart1_read_line_try(char *out, uint16_t out_size) {
     return STM_ERR_BUSY;
   }
   return st;
-}
-
-void usart1_send_byte(uint8_t data) { (void)usart1_write_byte_blocking(data); }
-
-void usart1_send_string(const char *str) {
-  (void)usart1_write_string_blocking(str);
-}
-
-uint8_t usart1_try_read_byte(uint8_t *out) {
-  return (usart1_read_byte_try(out) == STM_OK) ? 1U : 0U;
-}
-
-uint8_t usart1_try_read_string(char *out, uint16_t out_size) {
-  return (usart1_read_line_try(out, out_size) == STM_OK) ? 1U : 0U;
 }

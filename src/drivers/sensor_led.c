@@ -74,11 +74,6 @@ stm_status_t sensor_led_init_with_config(const sensor_led_config_t *config) {
   return STM_OK;
 }
 
-stm_status_t sensor_led_init(void) {
-  const sensor_led_config_t config = {.pwm_hz = SENSOR_LED_PWM_HZ_DEFAULT};
-  return sensor_led_init_with_config(&config);
-}
-
 static stm_status_t sensor_led_validate_duty(uint16_t duty_permille) {
   if (duty_permille > 1000U) {
     return STM_ERR_INVALID_ARG;
