@@ -4,6 +4,10 @@
 
 完整文档入口：[docs/INDEX.md](docs/INDEX.md)（各文档含中文 + English 双语章节）
 
+## 实物展示
+
+![STM32F103 原型硬件实物图](stm32.png)
+
 ---
 
 ## 特性概览
